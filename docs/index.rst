@@ -16,7 +16,7 @@ Features
 --------
 
 * Browser automation using Playwright
-* LLM-powered decision making
+* LLM-powered decision making using Ollama
 * State management
 * Memory system for short-term and long-term state
 * Action execution system
@@ -28,6 +28,7 @@ Installation
 .. code-block:: bash
 
    pip install nova
+   ollama pull llama3.2-vision
 
 Quick Start
 ----------
@@ -35,16 +36,16 @@ Quick Start
 .. code-block:: python
 
    from nova import Agent
-   from langchain_openai import ChatOpenAI
+   from nova.core.llama import LlamaModel
    import os
    from dotenv import load_dotenv
 
    load_dotenv()
 
-   llm = ChatOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+   model = LlamaModel(model_name="llama3.2-vision")
    agent = Agent(
        task="Navigate to example.com and click the first link",
-       llm=llm
+       llm=model
    )
    result = await agent.run()
    print(result)
