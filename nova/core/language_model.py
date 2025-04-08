@@ -1,9 +1,9 @@
-from typing import Dict, Protocol
+from typing import Dict, List, Any, Protocol
 
 class LanguageModel(Protocol):
     """Protocol defining the interface for language models."""
     
-    def generate_plan(self, task: str, context: Dict[str, str]) -> Dict[str, str]:
+    async def generate_plan(self, task: str, context: str) -> List[Dict[str, Any]]:
         """Generate a plan for executing a task.
         
         Args:
@@ -11,15 +11,17 @@ class LanguageModel(Protocol):
             context: Additional context for the task
             
         Returns:
-            A structured plan as a dictionary
+            A list of action steps
         """
         ...
         
-    def generate_response(self, prompt: str) -> str:
-        """Generate a response to a prompt.
+    async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
+        """Generate a response based on task execution results.
         
         Args:
-            prompt: The input prompt
+            task: The original task
+            plan: The executed plan steps
+            context: Additional context
             
         Returns:
             The generated response text
