@@ -1,9 +1,7 @@
 import asyncio
 from typing import Any, Dict, List, Sequence
 
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_openai import ChatOpenAI
-
+from nova.core.llama import LlamaModel
 from nova.core.agent import Agent
 from nova.core.browser import Browser
 from nova.core.config import AgentConfig, BrowserConfig
@@ -32,14 +30,17 @@ class CalculatorTool(Tool):
 
     async def execute(self, input_data: Dict[str, Any]) -> str:
         expression = input_data.get("expression", "")
-        # In a real implementation, this would evaluate the expression
-        return f"Result of {expression}"
+        try:
+            result = eval(expression)  # In a real implementation, use a safer evaluation method
+            return str(result)
+        except Exception as e:
+            return f"Error calculating: {str(e)}"
 
 
 async def main() -> None:
     # Initialize components
-    model = ChatOpenAI()  # Configure with your API key
-    llm = LLM(model)
+    model = LlamaModel(model_name="llama3.2-vision")
+    llm = LLM(model, model_type="llama")
     memory = Memory()
     tools: Sequence[Tool] = [SearchTool(), CalculatorTool()]
     

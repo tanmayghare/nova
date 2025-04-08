@@ -2,7 +2,12 @@
 
 import asyncio
 import os
+import logging
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 from nova.core.agent import Agent
 from nova.core.config import AgentConfig, BrowserConfig
@@ -18,8 +23,7 @@ class MockTool(Tool):
     def __init__(self):
         super().__init__(
             name="mock",
-            description="A mock tool that returns the input data",
-            parameters={"test": {"type": "string", "description": "Test parameter"}},
+            description="A mock tool that returns the input data"
         )
 
     async def execute(self, input_data: dict) -> str:
@@ -33,8 +37,9 @@ async def main():
     # Initialize Llama model with configuration from environment variables
     llama_model = LlamaModel(
         model_path=os.getenv("LLAMA_MODEL_PATH"),
-        n_ctx=int(os.getenv("LLAMA_N_CTX", "2048")),
-        n_threads=int(os.getenv("LLAMA_N_THREADS", "4")),
+        n_ctx=int(os.getenv("LLAMA_N_CTX", "4096")),
+        n_threads=int(os.getenv("LLAMA_N_THREADS", "6")),
+        n_gpu_layers=int(os.getenv("LLAMA_N_GPU_LAYERS", "1")),
     )
     
     # Create LLM wrapper
