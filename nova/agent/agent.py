@@ -3,7 +3,6 @@
 from typing import Any, Dict, List, Optional
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_openai import ChatOpenAI
 
 from nova.core.agent import Agent as CoreAgent
 from nova.core.browser import Browser
@@ -31,16 +30,12 @@ class Agent(CoreAgent):
         """Initialize the agent with optional components.
         
         Args:
-            llm: Language model for decision making. If None, uses default ChatOpenAI.
+            llm: Language model for decision making. If None, uses default LlamaModel.
             tools: List of tools available to the agent.
             memory: Memory system for context management.
             config: Agent configuration.
             browser_config: Browser configuration.
         """
-        # Use provided LLM or create a default one
-        if llm is None:
-            llm = ChatOpenAI()
-        
         # Initialize core agent
         super().__init__(
             llm=LLM(llm),
