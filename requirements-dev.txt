@@ -4,5 +4,4 @@ pytest-asyncio>=0.21.0
 black>=23.0.0
 isort>=5.0.0
 mypy>=1.0.0
-flake8>=6.0.0
-llama-cpp-python>=0.2.11 
+flake8>=6.0.0 

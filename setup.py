@@ -7,7 +7,6 @@ setup(
     install_requires=[
         "playwright>=1.40.0",
         "langchain>=0.1.0",
-        "langchain-openai>=0.0.2",
         "pydantic>=2.0.0",
         "python-dotenv>=1.0.0",
     ],
