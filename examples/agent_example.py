@@ -39,7 +39,7 @@ class CalculatorTool(Tool):
 
 async def main() -> None:
     # Initialize components
-    model = LlamaModel(model_name="llama3.2-vision")
+    model = LlamaModel(model_name="llama3.2:3b-instruct-q8_0")
     llm = LLM(model, model_type="llama")
     memory = Memory()
     tools: Sequence[Tool] = [SearchTool(), CalculatorTool()]

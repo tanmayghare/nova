@@ -10,6 +10,7 @@ Nova is an intelligent browser automation agent built with Python. It uses LLMs 
    installation
    usage
    api
+   tool_system
    contributing
 
 Features
@@ -21,6 +22,9 @@ Features
 * Memory system for short-term and long-term state
 * Action execution system
 * Error handling
+* Extensible tool system with performance monitoring
+* User-defined tools support
+* Tool chaining and composition
 
 Installation
 -----------
@@ -28,7 +32,7 @@ Installation
 .. code-block:: bash
 
    pip install nova
-   ollama pull llama3.2-vision
+   ollama pull llama3.2:3b-instruct-q8_0
 
 Quick Start
 ----------
@@ -42,7 +46,7 @@ Quick Start
 
    load_dotenv()
 
-   model = LlamaModel(model_name="llama3.2-vision")
+   model = LlamaModel(model_name="llama3.2:3b-instruct-q8_0")
    agent = Agent(
        task="Navigate to example.com and click the first link",
        llm=model

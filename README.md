@@ -29,16 +29,22 @@ pip install -e .
 playwright install chromium
 ```
 
+4. Install Ollama and pull the model:
+```bash
+ollama pull llama3.2:3b-instruct-q8_0
+```
+
 ## Usage
 
 ```python
 from nova.core.agent import Agent
-from langchain_openai import ChatOpenAI
+from nova.core.llama import LlamaModel
 
 # Initialize the agent
+model = LlamaModel(model_name="llama3.2:3b-instruct-q8_0")
 agent = Agent(
     task="Navigate to example.com and click the first link",
-    llm=ChatOpenAI(model="gpt-4"),
+    llm=model
 )
 
 # Run the agent

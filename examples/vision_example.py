@@ -4,6 +4,7 @@ import os
 import logging
 from pathlib import Path
 from nova.core.vision import VisionModel
+from nova.core.llama import LlamaModel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -64,4 +65,7 @@ if __name__ == "__main__":
     test_local_image()
     
     # Test URL image analysis
-    test_url_image() 
+    test_url_image()
+
+    # Initialize llama model
+    model = LlamaModel(model_name="llama3.2:3b-instruct-q8_0") 

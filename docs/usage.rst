@@ -9,19 +9,19 @@ Here's a basic example of how to use Nova:
 .. code-block:: python
 
    from nova import Agent
-   from langchain_openai import ChatOpenAI
+   from nova.core.llama import LlamaModel
    import os
    from dotenv import load_dotenv
 
    load_dotenv()
 
    # Initialize the language model
-   llm = ChatOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+   model = LlamaModel(model_name="llama3.2:3b-instruct-q8_0")
 
    # Create an agent
    agent = Agent(
        task="Navigate to example.com and click the first link",
-       llm=llm
+       llm=model
    )
 
    # Run the agent
@@ -45,7 +45,7 @@ You can configure the agent using the ``AgentConfig`` class:
 
    agent = Agent(
        task="Your task here",
-       llm=llm,
+       llm=model,
        config=config
    )
 
@@ -66,7 +66,7 @@ You can configure the browser using the ``BrowserConfig`` class:
 
    agent = Agent(
        task="Your task here",
-       llm=llm,
+       llm=model,
        browser_config=browser_config
    )
 
