@@ -11,6 +11,7 @@ from pathlib import Path
 from llama_cpp import Llama  # type: ignore
 from nova.core.monitoring import PerformanceMonitor
 from ..core.language_model import LanguageModel
+from pydantic import BaseModel, Field
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -46,114 +47,138 @@ Example plan:
 
 Important: Return ONLY the JSON object, no other text or explanation."""
 
+class LlamaConfig(BaseModel):
+    """Configuration for Llama model."""
+    model_name: str = Field(
+        default="llama3.2:3b-instruct-q8_0",
+        description="Name of the Ollama model to use"
+    )
+    temperature: float = Field(
+        default=0.7,
+        description="Temperature for sampling"
+    )
+    max_tokens: int = Field(
+        default=2048,
+        description="Maximum number of tokens to generate"
+    )
+    top_p: float = Field(
+        default=0.95,
+        description="Top-p sampling parameter"
+    )
+    top_k: int = Field(
+        default=40,
+        description="Top-k sampling parameter"
+    )
+    repeat_penalty: float = Field(
+        default=1.1,
+        description="Penalty for repeating tokens"
+    )
+
 class LlamaModel(LanguageModel):
-    """Implementation of LanguageModel using Ollama as primary and llama-cpp-python as fallback."""
-    
+    """Llama model implementation using Ollama."""
+
     def __init__(
         self,
         model_name: str = "llama3.2:3b-instruct-q8_0",
-        use_ollama: bool = True,
-        fallback_model_path: Optional[str] = None,
-        n_ctx: int = 4096,
-        n_threads: Optional[int] = 6,
-        n_gpu_layers: int = 1,
-        verbose: bool = False,
-        use_mlock: bool = True,
-        embedding: bool = False
-    ):
-        """
-        Initialize the Llama model with Ollama as primary and GGUF as fallback.
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        top_p: float = 0.95,
+        top_k: int = 40,
+        repeat_penalty: float = 1.1,
+    ) -> None:
+        """Initialize the Llama model.
         
         Args:
-            model_name: Name of the Ollama model to use. Defaults to llama3.2-vision:11b-instruct-q4_K_M.
-            use_ollama: Whether to use Ollama as primary backend. Defaults to True.
-            fallback_model_path: Path to the GGUF model file for fallback. If None, tries to find it in default locations.
-            n_ctx: Context window size. Default 4096 for 11B model.
-            n_threads: Number of threads to use. Default 6 for optimal performance.
-            n_gpu_layers: Number of layers to offload to GPU. 1 for initial GPU acceleration.
-            verbose: Whether to enable verbose logging.
-            use_mlock: Whether to use mlock to prevent swapping.
-            embedding: Whether to enable embedding mode.
+            model_name: Name of the Ollama model to use
+            temperature: Temperature for sampling
+            max_tokens: Maximum number of tokens to generate
+            top_p: Top-p sampling parameter
+            top_k: Top-k sampling parameter
+            repeat_penalty: Penalty for repeating tokens
         """
-        self.model_name = model_name
-        self.use_ollama = use_ollama
-        self.fallback_model_path = self._resolve_model_path(fallback_model_path) if fallback_model_path else None
-        self.n_ctx = n_ctx
-        self.n_threads = n_threads
-        self.n_gpu_layers = n_gpu_layers
-        self.verbose = verbose
-        self.use_mlock = use_mlock
-        self.embedding = embedding
-        self._model = None
-        
-        # Check Ollama availability if it's the primary backend
-        if self.use_ollama:
-            self._check_ollama_availability()
-        
-    def _check_ollama_availability(self):
-        """Check if Ollama is running and the model is available."""
-        try:
-            response = requests.get("http://localhost:11434/api/tags")
-            if response.status_code != 200:
-                raise RuntimeError("Ollama API is not responding")
-            
-            available_models = [model['name'] for model in response.json()['models']]
-            if self.model_name not in available_models:
-                logger.warning(f"Model {self.model_name} not found in Ollama. Will use fallback if available.")
-                self.use_ollama = False
-        except requests.exceptions.ConnectionError:
-            logger.warning("Ollama is not running. Will use fallback if available.")
-            self.use_ollama = False
-        
-    def _resolve_model_path(self, model_path: Optional[str]) -> str:
-        """Resolve the model path from various possible locations."""
-        if model_path and os.path.exists(model_path):
-            return model_path
-            
-        # Check default locations
-        default_locations = [
-            os.path.expanduser("~/Downloads/Llama-3.2-11B-Vision-Instruct.f16.gguf"),
-            os.path.expanduser("~/.llama/checkpoints/Llama-3.2-11B-Vision-Instruct.f16.gguf"),
-            "Llama-3.2-11B-Vision-Instruct.f16.gguf"
-        ]
-        
-        for path in default_locations:
-            if os.path.exists(path):
-                return path
-                
-        raise FileNotFoundError(
-            "Could not find GGUF model file. Please ensure the model file 'Llama-3.2-11B-Vision-Instruct.f16.gguf' "
-            "is placed in one of:\n"
-            f"{chr(10).join(default_locations)}"
+        self.config = LlamaConfig(
+            model_name=model_name,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            top_k=top_k,
+            repeat_penalty=repeat_penalty,
         )
+        self._client = None
+
+    async def generate(
+        self,
+        prompt: str,
+        stop: Optional[str] = None,
+        **kwargs: Any
+    ) -> str:
+        """Generate text from the model.
         
-    def _ensure_model_loaded(self):
-        """Ensure the fallback model is loaded, loading it if necessary."""
-        if self._model is None and not self.use_ollama and self.fallback_model_path:
-            try:
-                self._model = Llama(
-                    model_path=self.fallback_model_path,
-                    n_ctx=self.n_ctx,
-                    n_threads=self.n_threads,
-                    n_gpu_layers=self.n_gpu_layers,
-                    verbose=self.verbose,
-                    use_mlock=self.use_mlock,
-                    embedding=self.embedding
-                )
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to load Llama model from {self.fallback_model_path}. "
-                    "Please ensure the file is a valid GGUF model."
-                ) from e
-    
+        Args:
+            prompt: Input prompt
+            stop: Stop sequence
+            **kwargs: Additional arguments
+            
+        Returns:
+            Generated text
+        """
+        try:
+            response = requests.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": self.config.model_name,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "temperature": self.config.temperature,
+                        "top_p": self.config.top_p,
+                        "top_k": self.config.top_k,
+                        "repeat_penalty": self.config.repeat_penalty,
+                        "max_tokens": self.config.max_tokens,
+                        "stop": [stop] if stop else None
+                    }
+                }
+            )
+            
+            if response.status_code != 200:
+                raise RuntimeError(f"Ollama API request failed: {response.text}")
+            
+            result = response.json()
+            return result.get("response", "")
+            
+        except Exception as e:
+            raise RuntimeError("Failed to generate response with Ollama") from e
+
+    async def generate_with_vision(
+        self,
+        prompt: str,
+        image_path: str,
+        **kwargs: Any
+    ) -> str:
+        """Generate text from the model with vision capabilities.
+        
+        Args:
+            prompt: Input prompt
+            image_path: Path to the image
+            **kwargs: Additional arguments
+            
+        Returns:
+            Generated text
+        """
+        # For now, we'll use the same model for both text and vision
+        return await self.generate(prompt, **kwargs)
+
+    def get_config(self) -> Dict[str, Any]:
+        """Get the model configuration.
+        
+        Returns:
+            Dictionary containing model configuration
+        """
+        return self.config.dict()
+
     async def generate_plan(self, task: str, context: str) -> List[Dict[str, Any]]:
         """Generate a plan for executing a task."""
-        if self.use_ollama:
-            return await self._generate_plan_ollama(task, context)
-        elif self.fallback_model_path:
-            return await self._generate_plan_local(task, context)
-        else:
-            raise RuntimeError("No available model backend. Please ensure Ollama is running or provide a fallback model.")
+        return await self._generate_plan_ollama(task, context)
     
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
         """Generate a response based on task execution results."""
@@ -166,33 +191,7 @@ Context:
 
 Please provide a summary of the task execution results.
 """
-        if self.use_ollama:
-            return await self._generate_response_ollama(prompt)
-        elif self.fallback_model_path:
-            return await self._generate_response_local(prompt)
-        else:
-            raise RuntimeError("No available model backend. Please ensure Ollama is running or provide a fallback model.")
-    
-    async def _generate_plan_local(self, task: str, context: str) -> List[Dict[str, Any]]:
-        """Generate a plan using the local Llama model."""
-        self._ensure_model_loaded()
-        
-        # Format the prompt for plan generation
-        prompt = PROMPT_TEMPLATE.format(context=context, query=task)
-        
-        try:
-            response = self._model.create_completion(
-                prompt,
-                max_tokens=1024,
-                temperature=0.7,
-                top_p=0.95,
-                repeat_penalty=1.1,
-                stop=["</plan>"]
-            )
-            return self._parse_plan_response(response)
-        except Exception as e:
-            logger.error(f"Failed to generate plan: {str(e)}")
-            raise RuntimeError("Failed to generate plan") from e
+        return await self._generate_response_ollama(prompt)
     
     async def _generate_plan_ollama(self, task: str, context: str = "") -> List[Dict[str, Any]]:
         """Generate a plan using Ollama API."""
@@ -248,23 +247,6 @@ Please provide a summary of the task execution results.
                 }
             }]
     
-    async def _generate_response_local(self, prompt: str) -> str:
-        """Generate a response using the local Llama model."""
-        self._ensure_model_loaded()
-        
-        try:
-            response = self._model.create_completion(
-                prompt,
-                max_tokens=1024,
-                temperature=0.7,
-                top_p=0.95,
-                repeat_penalty=1.1
-            )
-            return response['choices'][0]['text'].strip()
-        except Exception as e:
-            logger.error(f"Failed to generate response: {str(e)}")
-            raise RuntimeError("Failed to generate response") from e
-    
     async def _generate_response_ollama(self, prompt: str) -> str:
         """Generate a response using Ollama API."""
         try:
@@ -284,26 +266,28 @@ Please provide a summary of the task execution results.
         try:
             print("Making Ollama request with prompt:", prompt)
             print("\nRequest payload:", {
-                "model": self.model_name,
+                "model": self.config.model_name,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.7,
-                    "top_p": 0.95,
-                    "repeat_penalty": 1.1
+                    "temperature": self.config.temperature,
+                    "top_p": self.config.top_p,
+                    "top_k": self.config.top_k,
+                    "repeat_penalty": self.config.repeat_penalty
                 }
             })
             
             response = requests.post(
                 "http://localhost:11434/api/generate",
                 json={
-                    "model": self.model_name,
+                    "model": self.config.model_name,
                     "prompt": prompt,
                     "stream": False,
                     "options": {
-                        "temperature": 0.7,
-                        "top_p": 0.95,
-                        "repeat_penalty": 1.1
+                        "temperature": self.config.temperature,
+                        "top_p": self.config.top_p,
+                        "top_k": self.config.top_k,
+                        "repeat_penalty": self.config.repeat_penalty
                     }
                 }
             )
@@ -314,9 +298,6 @@ Please provide a summary of the task execution results.
             
             if response.status_code != 200:
                 logger.warning(f"Ollama API request failed: {response.text}. Trying fallback if available.")
-                if self.fallback_model_path:
-                    self.use_ollama = False
-                    return await self._generate_response_local(prompt)
                 raise RuntimeError(f"Ollama API request failed: {response.text}")
             
             result = response.json()
@@ -324,11 +305,7 @@ Please provide a summary of the task execution results.
             return result
             
         except Exception as e:
-            if self.fallback_model_path:
-                logger.info("Attempting to use fallback model...")
-                self.use_ollama = False
-                return await self._generate_response_local(prompt)
-            raise RuntimeError("Failed to generate response with Ollama and no fallback available") from e
+            raise RuntimeError("Failed to generate response with Ollama") from e
     
     def _parse_plan_response(self, response: Dict) -> List[Dict[str, Any]]:
         """Parse the model's response into a structured plan."""
