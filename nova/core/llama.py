@@ -106,6 +106,48 @@ class LlamaModel(LanguageModel):
         )
         self._client = None
 
+    @classmethod
+    async def list_available_models(cls) -> List[str]:
+        """List available models from Ollama.
+        
+        Returns:
+            List of available model names
+        """
+        try:
+            # Try to get models from Ollama API
+            response = requests.get("http://localhost:11434/api/tags")
+            
+            if response.status_code != 200:
+                logger.warning(f"Ollama API request failed: {response.text}")
+                # Return default models if API fails
+                return [
+                    "llama3.2:3b-instruct-q8_0",
+                    "llama3.2:8b-instruct-q6_K",
+                    "llama3.1:70b-instruct-q4_K_M"
+                ]
+            
+            result = response.json()
+            models = [model["name"] for model in result.get("models", [])]
+            
+            # If no models were found, return default list
+            if not models:
+                return [
+                    "llama3.2:3b-instruct-q8_0",
+                    "llama3.2:8b-instruct-q6_K",
+                    "llama3.1:70b-instruct-q4_K_M"
+                ]
+                
+            return models
+            
+        except Exception as e:
+            logger.error(f"Failed to get available models: {str(e)}")
+            # Return default models if API fails
+            return [
+                "llama3.2:3b-instruct-q8_0",
+                "llama3.2:8b-instruct-q6_K",
+                "llama3.1:70b-instruct-q4_K_M"
+            ]
+
     async def generate(
         self,
         prompt: str,
