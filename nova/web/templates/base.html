@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title | default("Nova Dashboard") }}</title>
+    <!-- Tailwind CSS via CDN for rapid prototyping -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Custom styles -->
+    <style>
+        body {
+            min-height: 100vh;
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <div class="flex flex-col min-h-screen">
+        <!-- Header -->
+        <header class="bg-[#0047AB] text-white shadow-md">
+            <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-bold">Nova Dashboard</h1>
+                    <span class="ml-2 text-xs bg-[#1E4D9C] px-2 py-1 rounded">v{{ version }}</span>
+                </div>
+                <nav>
+                    <ul class="flex space-x-4">
+                        <li><a href="/" class="hover:text-blue-200 {% if request.url.path == '/' %}font-bold underline{% endif %}">Dashboard</a></li>
+                        <li><a href="/tasks" class="hover:text-blue-200 {% if request.url.path == '/tasks' %}font-bold underline{% endif %}">Tasks</a></li>
+                        <li><a href="/builder" class="hover:text-blue-200 {% if request.url.path == '/builder' %}font-bold underline{% endif %}">Builder</a></li>
+                        <li><a href="/settings" class="hover:text-blue-200 {% if request.url.path == '/settings' %}font-bold underline{% endif %}">Settings</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <main class="flex-grow container mx-auto px-4 py-6">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-gray-100 border-t border-gray-200 py-4">
+            <div class="container mx-auto px-4 text-center text-gray-600 text-sm">
+                <p>Nova - An intelligent browser automation agent</p>
+                <p class="mt-1">&copy; 2024 Nova Project</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Common Scripts -->
+    <script>
+        // Common utility functions
+        function formatDate(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleString();
+        }
+
+        // WebSocket connection for real-time updates
+        let socket;
+        
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/monitoring/ws`;
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                console.log('WebSocket connected');
+                // Send heartbeat every 30 seconds to keep connection alive
+                window.setInterval(() => {
+                    if (socket.readyState === WebSocket.OPEN) {
+                        socket.send('heartbeat');
+                    }
+                }, 30000);
+            };
+            
+            socket.onclose = () => {
+                console.log('WebSocket disconnected. Reconnecting...');
+                setTimeout(connectWebSocket, 2000);
+            };
+            
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+            
+            socket.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'stats') {
+                        // Dispatch custom event for stats updates
+                        const statsEvent = new CustomEvent('nova:stats', { detail: message.data });
+                        window.dispatchEvent(statsEvent);
+                    }
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
+                }
+            };
+        }
+        
+        // Connect WebSocket when page loads
+        document.addEventListener('DOMContentLoaded', connectWebSocket);
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html> 

@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <!-- System Stats Card -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">System</h2>
+        <div class="space-y-4">
+            <div>
+                <div class="flex justify-between text-sm mb-1">
+                    <span>CPU Usage</span>
+                    <span id="cpu-usage">--.--%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div id="cpu-usage-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+            <div>
+                <div class="flex justify-between text-sm mb-1">
+                    <span>Memory Usage</span>
+                    <span id="memory-usage">--.--%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div id="memory-usage-bar" class="bg-purple-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+            <div>
+                <div class="text-sm">Memory Available</div>
+                <div id="memory-available" class="font-mono">--.-- MB</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Process Stats Card -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Nova Process</h2>
+        <div class="space-y-4">
+            <div>
+                <div class="flex justify-between text-sm mb-1">
+                    <span>CPU Usage</span>
+                    <span id="process-cpu-usage">--.--%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div id="process-cpu-usage-bar" class="bg-green-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+            <div>
+                <div class="text-sm">Memory Usage</div>
+                <div id="process-memory-usage" class="font-mono">--.-- MB</div>
+            </div>
+            <div>
+                <div class="text-sm">Threads</div>
+                <div id="process-threads" class="font-mono">--</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Nova Info Card -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Nova Info</h2>
+        <div class="space-y-2">
+            <div>
+                <div class="text-sm text-gray-600">Version</div>
+                <div class="text-lg font-semibold">{{ version }}</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">Uptime</div>
+                <div id="nova-uptime" class="font-mono">--:--:--</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-600">Executions</div>
+                <div id="nova-executions" class="font-mono">--</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions Card -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Quick Actions</h2>
+        <div class="space-y-3">
+            <a href="/tasks" class="block w-full bg-indigo-600 text-white text-center py-2 px-4 rounded hover:bg-indigo-700 transition">New Task</a>
+            <a href="/builder" class="block w-full bg-gray-800 text-white text-center py-2 px-4 rounded hover:bg-gray-900 transition">Workflow Builder</a>
+            <a href="/settings" class="block w-full border border-gray-300 text-gray-700 text-center py-2 px-4 rounded hover:bg-gray-50 transition">Settings</a>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Tasks -->
+<div class="mt-8 bg-white p-6 rounded-lg shadow-md">
+    <h2 class="text-lg font-semibold mb-4">Recent Tasks</h2>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3">Time</th>
+                    <th class="px-6 py-3">Task</th>
+                    <th class="px-6 py-3">Status</th>
+                    <th class="px-6 py-3">Result</th>
+                </tr>
+            </thead>
+            <tbody id="task-history-table">
+                <tr class="border-b">
+                    <td class="px-6 py-4 text-gray-400" colspan="4">No tasks yet</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Usage Charts -->
+<div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- CPU Usage Chart -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">CPU Usage History</h2>
+        <canvas id="cpu-chart" height="200"></canvas>
+    </div>
+    
+    <!-- Memory Usage Chart -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-lg font-semibold mb-4">Memory Usage History</h2>
+        <canvas id="memory-chart" height="200"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Initialize charts
+    const cpuChartCtx = document.getElementById('cpu-chart').getContext('2d');
+    const cpuChart = new Chart(cpuChartCtx, {
+        type: 'line',
+        data: {
+            labels: Array(30).fill(''),
+            datasets: [
+                {
+                    label: 'System CPU',
+                    data: Array(30).fill(null),
+                    borderColor: 'rgb(59, 130, 246)',
+                    tension: 0.2,
+                    fill: false
+                },
+                {
+                    label: 'Nova CPU',
+                    data: Array(30).fill(null),
+                    borderColor: 'rgb(22, 163, 74)',
+                    tension: 0.2,
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            animation: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'CPU Usage (%)'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                }
+            }
+        }
+    });
+
+    const memoryChartCtx = document.getElementById('memory-chart').getContext('2d');
+    const memoryChart = new Chart(memoryChartCtx, {
+        type: 'line',
+        data: {
+            labels: Array(30).fill(''),
+            datasets: [
+                {
+                    label: 'System Memory',
+                    data: Array(30).fill(null),
+                    borderColor: 'rgb(147, 51, 234)',
+                    tension: 0.2,
+                    fill: false
+                },
+                {
+                    label: 'Nova Memory (MB)',
+                    data: Array(30).fill(null),
+                    borderColor: 'rgb(236, 72, 153)',
+                    tension: 0.2,
+                    fill: false,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            animation: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'System Memory (%)'
+                    }
+                },
+                y1: {
+                    beginAtZero: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Nova Memory (MB)'
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                }
+            }
+        }
+    });
+
+    // Format uptime
+    function formatUptime(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    // Update task history table
+    function updateTaskHistoryTable(history) {
+        const tableBody = document.getElementById('task-history-table');
+        
+        if (history.length === 0) {
+            tableBody.innerHTML = `
+                <tr class="border-b">
+                    <td class="px-6 py-4 text-gray-400" colspan="4">No tasks yet</td>
+                </tr>
+            `;
+            return;
+        }
+        
+        tableBody.innerHTML = '';
+        
+        // Show most recent first, limit to 10 entries
+        const recentHistory = [...history].reverse().slice(0, 10);
+        
+        for (const entry of recentHistory) {
+            const row = document.createElement('tr');
+            row.className = 'border-b hover:bg-gray-50';
+            
+            const statusClass = entry.status === 'success' ? 'text-green-600' : 'text-red-600';
+            const truncatedTask = entry.task.length > 50 ? entry.task.substring(0, 50) + '...' : entry.task;
+            const truncatedResult = entry.result ? 
+                (entry.result.length > 50 ? entry.result.substring(0, 50) + '...' : entry.result) : 
+                (entry.error || 'N/A');
+            
+            row.innerHTML = `
+                <td class="px-6 py-4">${formatDate(entry.timestamp)}</td>
+                <td class="px-6 py-4">${truncatedTask}</td>
+                <td class="px-6 py-4 ${statusClass} font-semibold">${entry.status}</td>
+                <td class="px-6 py-4 font-mono text-xs">${truncatedResult}</td>
+            `;
+            
+            tableBody.appendChild(row);
+        }
+    }
+
+    // Update UI with stats
+    function updateStats(stats) {
+        // Update system stats
+        document.getElementById('cpu-usage').textContent = `${stats.system.cpu_usage.toFixed(1)}%`;
+        document.getElementById('cpu-usage-bar').style.width = `${stats.system.cpu_usage}%`;
+        
+        document.getElementById('memory-usage').textContent = `${stats.system.memory_usage.toFixed(1)}%`;
+        document.getElementById('memory-usage-bar').style.width = `${stats.system.memory_usage}%`;
+        
+        document.getElementById('memory-available').textContent = `${stats.system.memory_available.toFixed(1)} MB`;
+        
+        // Update process stats
+        document.getElementById('process-cpu-usage').textContent = `${stats.process.cpu_usage.toFixed(1)}%`;
+        document.getElementById('process-cpu-usage-bar').style.width = `${stats.process.cpu_usage}%`;
+        
+        document.getElementById('process-memory-usage').textContent = `${stats.process.memory_usage.toFixed(1)} MB`;
+        document.getElementById('process-threads').textContent = stats.process.threads;
+        
+        // Update Nova info
+        document.getElementById('nova-uptime').textContent = formatUptime(stats.nova.uptime);
+        document.getElementById('nova-executions').textContent = stats.nova.execution_count;
+        
+        // Update charts
+        cpuChart.data.datasets[0].data.shift();
+        cpuChart.data.datasets[0].data.push(stats.system.cpu_usage);
+        
+        cpuChart.data.datasets[1].data.shift();
+        cpuChart.data.datasets[1].data.push(stats.process.cpu_usage);
+        
+        memoryChart.data.datasets[0].data.shift();
+        memoryChart.data.datasets[0].data.push(stats.system.memory_usage);
+        
+        memoryChart.data.datasets[1].data.shift();
+        memoryChart.data.datasets[1].data.push(stats.process.memory_usage);
+        
+        cpuChart.update();
+        memoryChart.update();
+    }
+
+    // Load initial data when page loads
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Load initial stats
+        try {
+            const response = await fetch('/monitoring/stats');
+            const stats = await response.json();
+            updateStats(stats);
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+        
+        // Load task history
+        try {
+            const response = await fetch('/monitoring/history');
+            const history = await response.json();
+            updateTaskHistoryTable(history);
+        } catch (error) {
+            console.error('Error loading task history:', error);
+        }
+    });
+
+    // Listen for stats updates
+    window.addEventListener('nova:stats', (event) => {
+        updateStats(event.detail);
+    });
+</script>
+{% endblock %} 

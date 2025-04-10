@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold mb-8">Workflow Builder</h1>
+    
+    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+        <p class="text-lg text-center text-gray-600 mb-6">Create automation workflows using a visual builder</p>
+        <div class="flex justify-center">
+            <button id="create-workflow" class="bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                Create New Workflow
+            </button>
+        </div>
+    </div>
+    
+    <div id="builder-container" class="hidden">
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <!-- Sidebar with blocks -->
+                <div class="md:col-span-1 border-r pr-4">
+                    <h2 class="text-lg font-semibold mb-4">Actions</h2>
+                    <div class="space-y-4">
+                        <div draggable="true" class="block-item bg-blue-50 p-3 rounded border border-blue-200 cursor-move hover:bg-blue-100" data-type="browser">
+                            <h3 class="font-medium">Browser Action</h3>
+                            <p class="text-sm text-gray-600">Navigate, click, or type in the browser</p>
+                        </div>
+                        <div draggable="true" class="block-item bg-purple-50 p-3 rounded border border-purple-200 cursor-move hover:bg-purple-100" data-type="condition">
+                            <h3 class="font-medium">Condition</h3>
+                            <p class="text-sm text-gray-600">Branch based on condition</p>
+                        </div>
+                        <div draggable="true" class="block-item bg-yellow-50 p-3 rounded border border-yellow-200 cursor-move hover:bg-yellow-100" data-type="tool">
+                            <h3 class="font-medium">Tool</h3>
+                            <p class="text-sm text-gray-600">Use a specialized tool</p>
+                        </div>
+                        <div draggable="true" class="block-item bg-green-50 p-3 rounded border border-green-200 cursor-move hover:bg-green-100" data-type="llm">
+                            <h3 class="font-medium">AI Decision</h3>
+                            <p class="text-sm text-gray-600">Use LLM to make a decision</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Main workspace -->
+                <div class="md:col-span-3">
+                    <div class="flex justify-between items-center mb-4">
+                        <input type="text" id="workflow-name" placeholder="Workflow Name" class="border-b border-gray-300 text-xl font-medium focus:outline-none focus:border-indigo-500 bg-transparent">
+                        <div>
+                            <button id="save-workflow" class="bg-indigo-600 text-white py-1 px-3 rounded-md text-sm hover:bg-indigo-700">Save</button>
+                            <button id="run-workflow" class="bg-green-600 text-white py-1 px-3 rounded-md text-sm hover:bg-green-700 ml-2">Run</button>
+                        </div>
+                    </div>
+                    
+                    <div id="workflow-canvas" class="min-h-[400px] border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
+                        <p class="text-center text-gray-500 my-12">Drag actions here to build your workflow</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Configuration Panel -->
+        <div id="config-panel" class="bg-white rounded-lg shadow-md p-6 hidden">
+            <h2 id="config-title" class="text-lg font-semibold mb-4">Configure Action</h2>
+            <div id="config-form">
+                <!-- Configuration form will be dynamically rendered here -->
+            </div>
+            <div class="mt-4 flex justify-end space-x-3">
+                <button id="cancel-config" class="border border-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-50">Cancel</button>
+                <button id="apply-config" class="bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message for future features -->
+    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 my-6">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-yellow-700">
+                    This feature is under development. Full workflow builder will be available in the next release.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const createWorkflowBtn = document.getElementById('create-workflow');
+        const builderContainer = document.getElementById('builder-container');
+        const workflowCanvas = document.getElementById('workflow-canvas');
+        const configPanel = document.getElementById('config-panel');
+        const cancelConfigBtn = document.getElementById('cancel-config');
+        const applyConfigBtn = document.getElementById('apply-config');
+        const saveWorkflowBtn = document.getElementById('save-workflow');
+        const runWorkflowBtn = document.getElementById('run-workflow');
+        
+        let currentBlock = null;
+        let blocks = [];
+        
+        // Create workflow
+        createWorkflowBtn.addEventListener('click', () => {
+            createWorkflowBtn.parentElement.parentElement.classList.add('hidden');
+            builderContainer.classList.remove('hidden');
+        });
+        
+        // Initialize drag and drop
+        const blockItems = document.querySelectorAll('.block-item');
+        blockItems.forEach(item => {
+            item.addEventListener('dragstart', handleDragStart);
+        });
+        
+        workflowCanvas.addEventListener('dragover', handleDragOver);
+        workflowCanvas.addEventListener('drop', handleDrop);
+        
+        // Cancel configuration
+        cancelConfigBtn.addEventListener('click', () => {
+            configPanel.classList.add('hidden');
+        });
+        
+        // Apply configuration
+        applyConfigBtn.addEventListener('click', () => {
+            if (currentBlock) {
+                // In a full implementation, this would update the block based on form inputs
+                configPanel.classList.add('hidden');
+                currentBlock = null;
+            }
+        });
+        
+        // Save workflow
+        saveWorkflowBtn.addEventListener('click', () => {
+            const workflowName = document.getElementById('workflow-name').value || 'Untitled Workflow';
+            alert(`Workflow "${workflowName}" saved (simulated)`);
+        });
+        
+        // Run workflow
+        runWorkflowBtn.addEventListener('click', () => {
+            if (blocks.length === 0) {
+                alert('Please add at least one action to your workflow');
+                return;
+            }
+            
+            const workflowName = document.getElementById('workflow-name').value || 'Untitled Workflow';
+            alert(`Running workflow "${workflowName}" (simulated)`);
+        });
+        
+        // Drag and drop handlers
+        function handleDragStart(e) {
+            e.dataTransfer.setData('text/plain', e.target.getAttribute('data-type'));
+            e.dataTransfer.effectAllowed = 'copy';
+        }
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            
+            const blockType = e.dataTransfer.getData('text/plain');
+            if (!blockType) return;
+            
+            // Clear placeholder text
+            if (workflowCanvas.querySelector('p')) {
+                workflowCanvas.querySelector('p').remove();
+            }
+            
+            // Create new block
+            createBlock(blockType, e.clientX, e.clientY);
+        }
+        
+        function createBlock(type, x, y) {
+            const block = document.createElement('div');
+            
+            // Set style based on type
+            let bgColor, borderColor, title;
+            switch (type) {
+                case 'browser':
+                    bgColor = 'bg-blue-50';
+                    borderColor = 'border-blue-300';
+                    title = 'Browser Action';
+                    break;
+                case 'condition':
+                    bgColor = 'bg-purple-50';
+                    borderColor = 'border-purple-300';
+                    title = 'Condition';
+                    break;
+                case 'tool':
+                    bgColor = 'bg-yellow-50';
+                    borderColor = 'border-yellow-300';
+                    title = 'Tool';
+                    break;
+                case 'llm':
+                    bgColor = 'bg-green-50';
+                    borderColor = 'border-green-300';
+                    title = 'AI Decision';
+                    break;
+                default:
+                    bgColor = 'bg-gray-50';
+                    borderColor = 'border-gray-300';
+                    title = 'Action';
+            }
+            
+            // Set block properties
+            const blockId = `block-${Date.now()}`;
+            block.id = blockId;
+            block.className = `block ${bgColor} p-3 rounded border ${borderColor} mb-3 relative`;
+            block.setAttribute('data-type', type);
+            
+            // Add block content
+            block.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <h3 class="font-medium">${title}</h3>
+                    <div class="flex space-x-1">
+                        <button class="text-gray-500 hover:text-indigo-600 edit-block" data-id="${blockId}">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        </button>
+                        <button class="text-gray-500 hover:text-red-600 delete-block" data-id="${blockId}">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-600 mt-1">Configure this ${title.toLowerCase()}</p>
+            `;
+            
+            // Add to workflow canvas
+            workflowCanvas.appendChild(block);
+            blocks.push({
+                id: blockId,
+                type: type,
+                config: {}
+            });
+            
+            // Add event listeners
+            block.querySelector('.edit-block').addEventListener('click', () => {
+                showConfigPanel(blockId, type, title);
+            });
+            
+            block.querySelector('.delete-block').addEventListener('click', () => {
+                deleteBlock(blockId);
+            });
+            
+            // Make block movable
+            block.draggable = true;
+            block.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('application/json', JSON.stringify({
+                    id: blockId,
+                    action: 'move'
+                }));
+            });
+        }
+        
+        function showConfigPanel(blockId, type, title) {
+            currentBlock = blocks.find(b => b.id === blockId);
+            
+            if (!currentBlock) return;
+            
+            const configTitle = document.getElementById('config-title');
+            const configForm = document.getElementById('config-form');
+            
+            configTitle.textContent = `Configure ${title}`;
+            
+            // Generate form based on block type
+            let formHtml = '';
+            
+            switch (type) {
+                case 'browser':
+                    formHtml = `
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Action Type</label>
+                            <select class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="navigate">Navigate to URL</option>
+                                <option value="click">Click Element</option>
+                                <option value="type">Type Text</option>
+                                <option value="extract">Extract Content</option>
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">URL / Selector</label>
+                            <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Enter URL or CSS selector">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Wait Time (ms)</label>
+                            <input type="number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" value="1000">
+                        </div>
+                    `;
+                    break;
+                    
+                case 'condition':
+                    formHtml = `
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Condition Type</label>
+                            <select class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="element_exists">Element Exists</option>
+                                <option value="element_text">Element Text Contains</option>
+                                <option value="url_contains">URL Contains</option>
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Selector / Value</label>
+                            <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Enter selector or text value">
+                        </div>
+                    `;
+                    break;
+                    
+                case 'tool':
+                    formHtml = `
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Tool</label>
+                            <select class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="screenshot">Take Screenshot</option>
+                                <option value="save_pdf">Save as PDF</option>
+                                <option value="api_call">API Call</option>
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Parameters</label>
+                            <textarea class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Enter parameters as JSON" rows="3"></textarea>
+                        </div>
+                    `;
+                    break;
+                    
+                case 'llm':
+                    formHtml = `
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Prompt</label>
+                            <textarea class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Enter prompt for the AI" rows="3"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                            <select id="model" name="model" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="llama3.2:3b-instruct-q8_0">Llama 3.2 3B</option>
+                                <option value="llama3.2-vision:11b-instruct-fp16">Llama 3.2 Vision 11B</option>
+                                <option value="llama3.2-vision:11b-instruct-q4_K_M">Llama 3.2 Vision 11B (Quantized)</option>
+                            </select>
+                        </div>
+                    `;
+                    break;
+                    
+                default:
+                    formHtml = '<p>No configuration available for this block type.</p>';
+            }
+            
+            configForm.innerHTML = formHtml;
+            configPanel.classList.remove('hidden');
+        }
+        
+        function deleteBlock(blockId) {
+            const block = document.getElementById(blockId);
+            if (block) {
+                block.remove();
+                blocks = blocks.filter(b => b.id !== blockId);
+                
+                // Show placeholder if no blocks
+                if (blocks.length === 0) {
+                    workflowCanvas.innerHTML = '<p class="text-center text-gray-500 my-12">Drag actions here to build your workflow</p>';
+                }
+            }
+        }
+    });
+</script>
+{% endblock %} 
