@@ -26,6 +26,7 @@ class Agent:
         memory: Optional[Memory] = None,
         config: Optional[AgentConfig] = None,
         browser_config: Optional[BrowserConfig] = None,
+        browser: Optional[Browser] = None,
     ) -> None:
         """Initialize the agent with LLM, tools, memory, and configuration.
         
@@ -35,18 +36,22 @@ class Agent:
             memory: Memory system for context management
             config: Agent configuration
             browser_config: Browser configuration
+            browser: Optional pre-configured browser instance
         """
         self.llm = llm
         self.tools = tools or []
         self.memory = memory or Memory()
         self.config = config or AgentConfig()
-        self.browser = Browser(browser_config or BrowserConfig())
+        self.browser = browser or Browser(browser_config or BrowserConfig())
         self.tool_registry = ToolRegistry()
         for tool in self.tools:
             self.tool_registry.register(tool)
 
     async def start(self) -> None:
         """Start the agent and its browser."""
+        if self.browser.page is not None:
+            logger.warning("Browser already started")
+            return
         await self.browser.start()
 
     async def stop(self) -> None:
@@ -61,13 +66,26 @@ class Agent:
             
         Returns:
             The result of executing the task
+            
+        Raises:
+            Exception: If task execution fails
         """
-        await self.start()
+        if self.browser.page is not None:
+            logger.warning("Browser already running, cleaning up first")
+            await self.cleanup()
+            
         try:
+            await self.start()
             result = await self._execute_task(task)
             return result
+        except Exception as e:
+            logger.error(f"Task execution failed: {e}", exc_info=True)
+            raise
         finally:
-            await self.stop()
+            try:
+                await self.cleanup()
+            except Exception as e:
+                logger.error(f"Cleanup failed: {e}", exc_info=True)
 
     async def _execute_task(self, task: str) -> str:
         """Execute a task using the agent's capabilities.
@@ -77,29 +95,49 @@ class Agent:
             
         Returns:
             The result of executing the task
-        """
-        # Get relevant context from memory
-        context = await self.memory.get_context(task)
-        
-        # Generate a plan using the LLM
-        plan = await self.llm.generate_plan(task, context)
-        
-        # Execute the plan step by step
-        for step in plan:
-            # Choose appropriate tool or action
-            if step["type"] == "browser":
-                result = await self._execute_browser_action(step["action"])
-            elif step["type"] == "tool":
-                result = await self._execute_tool(step["tool"], step["input"])
-            else:
-                result = "Unknown action type"
             
-            # Store the result in memory
-            await self.memory.add(task, step, result)
-        
-        # Generate final response
-        final_response = await self.llm.generate_response(task, plan, context)
-        return final_response
+        Raises:
+            Exception: If task execution fails
+        """
+        try:
+            # Get relevant context from memory
+            context = await self.memory.get_context(task)
+            
+            # Generate a plan using the LLM
+            plan = await self.llm.generate_plan(task, context)
+            if not plan:
+                raise RuntimeError("Failed to generate plan")
+            
+            # Execute the plan step by step
+            results = []
+            for step in plan:
+                try:
+                    # Choose appropriate tool or action
+                    if step["type"] == "browser":
+                        result = await self._execute_browser_action(step["action"])
+                    elif step["type"] == "tool":
+                        result = await self._execute_tool(step["tool"], step["input"])
+                    else:
+                        result = f"Unknown action type: {step['type']}"
+                    
+                    # Store the result in memory
+                    await self.memory.add(task, step, result)
+                    results.append(result)
+                except Exception as e:
+                    error_msg = f"Step execution failed: {str(e)}"
+                    logger.error(error_msg, exc_info=True)
+                    await self.memory.add(task, step, error_msg)
+                    results.append(error_msg)
+            
+            # Generate final response
+            final_response = await self.llm.generate_response(task, plan, context)
+            if not final_response:
+                raise RuntimeError("Failed to generate response")
+            
+            return final_response
+        except Exception as e:
+            logger.error(f"Task execution failed: {e}", exc_info=True)
+            raise
 
     async def _execute_browser_action(self, action: Dict[str, Any]) -> str:
         """Execute a browser action.
@@ -143,4 +181,8 @@ class Agent:
 
     async def cleanup(self) -> None:
         """Clean up resources."""
-        await self.browser.close()
+        try:
+            if self.browser:
+                await self.browser.close()
+        except Exception as e:
+            logger.error(f"Browser cleanup failed: {e}", exc_info=True)

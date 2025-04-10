@@ -25,74 +25,72 @@ class Browser:
     to Playwright's viewport format when needed.
     """
 
-    def __init__(self, config: Optional[BrowserConfig] = None) -> None:
+    def __init__(self, config: BrowserConfig) -> None:
         """Initialize the browser with configuration.
         
         Args:
-            config: Optional browser configuration. If not provided, uses default config.
-                   The viewport configuration should be a dictionary with 'width' and 'height'
-                   keys containing integer values.
+            config: Browser configuration
         """
-        self.config = config or BrowserConfig()
-        self._browser: Optional[PlaywrightBrowser] = None
-        self._page: Optional[Page] = None
+        self.config = config
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.page = None
 
     async def start(self) -> None:
-        """Start the browser and create a new page.
-        
-        This method launches the browser with the configured options and creates
-        an initial page. If viewport configuration is provided, it sets the viewport
-        size for the page.
-        """
-        playwright = await async_playwright().start()
-        self._browser = await playwright.chromium.launch(
-            headless=self.config.headless, args=self.config.browser_args
-        )
-        self._page = await self._browser.new_page()
-        if self.config.viewport:
-            # Note: We use type: ignore here because Playwright's type hints expect their
-            # ViewportSize class, but their implementation actually accepts a compatible dict
-            await self._page.set_viewport_size(self.config.viewport)  # type: ignore
+        """Start the browser."""
+        try:
+            self.playwright = await async_playwright().start()
+            browser = await self.playwright.chromium.launch(
+                headless=self.config.headless,
+                args=["--no-sandbox", "--disable-setuid-sandbox"],
+            )
+            self.browser = browser
+            self.context = await browser.new_context()
+            self.page = await self.context.new_page()
+            if self.config.viewport:
+                await self.page.set_viewport_size(self.config.viewport)  # type: ignore
+        except Exception as e:
+            logger.error(f"Failed to start browser: {e}", exc_info=True)
+            await self.close()
+            raise
 
     async def stop(self) -> None:
         """Stop the browser."""
-        if self._browser:
-            await self._browser.close()
-            self._browser = None
-            self._page = None
+        await self.close()
 
     async def navigate(self, url: str) -> None:
         """Navigate to a URL."""
-        if not self._page:
+        if not self.page:
             raise RuntimeError("Browser not started")
-        await self._page.goto(url)
+        await self.page.goto(url)
 
     async def get_text(self, selector: str) -> str:
         """Get text content of an element matching the selector."""
-        if not self._page:
+        if not self.page:
             raise RuntimeError("Browser not started")
-        content = await self._page.text_content(selector)
+        content = await self.page.text_content(selector)
         if content is None:
             return ""
         return content
 
     async def get_html(self) -> str:
         """Get the HTML content of the current page."""
-        if not self._page:
+        if not self.page:
             raise RuntimeError("Browser not started")
-        return await self._page.content()
+        return await self.page.content()
 
     async def click(self, selector: str) -> None:
         """Click an element matching the selector."""
-        if not self._page:
+        if not self.page:
             raise RuntimeError("Browser not started")
-        await self._page.click(selector)
+        await self.page.click(selector)
 
     async def type(self, selector: str, text: str) -> None:
         """Type text into an element matching the selector."""
-        if not self._page:
+        if not self.page:
             raise RuntimeError("Browser not started")
-        await self._page.fill(selector, text)
+        await self.page.fill(selector, text)
 
     async def get_state(self) -> Dict[str, Any]:
         """Get the current browser state.
@@ -100,19 +98,81 @@ class Browser:
         Returns:
             Dict containing the current state
         """
-        if not self._page:
+        if not self.page:
             raise RuntimeError("Browser not started")
 
         return {
-            "url": self._page.url,
-            "title": await self._page.title(),
-            "content": await self._page.content(),
+            "url": self.page.url,
+            "title": await self.page.title(),
+            "content": await self.page.content(),
             "viewport": self.config.viewport,
         }
 
     async def close(self) -> None:
         """Close the browser and cleanup resources."""
-        if self._browser:
-            await self._browser.close()
-            self._browser = None
-            self._page = None
+        # Track what we've cleaned up to avoid double cleanup
+        cleaned = {
+            'page': False,
+            'context': False,
+            'browser': False,
+            'playwright': False
+        }
+        
+        try:
+            # Clean up page
+            if self.page and not cleaned['page']:
+                try:
+                    await self.page.close()
+                    cleaned['page'] = True
+                except Exception as e:
+                    logger.error(f"Failed to close page: {e}", exc_info=True)
+                finally:
+                    self.page = None
+                
+            # Clean up context
+            if self.context and not cleaned['context']:
+                try:
+                    await self.context.close()
+                    cleaned['context'] = True
+                except Exception as e:
+                    logger.error(f"Failed to close context: {e}", exc_info=True)
+                finally:
+                    self.context = None
+                
+            # Clean up browser
+            if self.browser and not cleaned['browser']:
+                try:
+                    await self.browser.close()
+                    cleaned['browser'] = True
+                except Exception as e:
+                    logger.error(f"Failed to close browser: {e}", exc_info=True)
+                finally:
+                    self.browser = None
+
+            # Clean up playwright
+            if self.playwright and not cleaned['playwright']:
+                try:
+                    await self.playwright.stop()
+                    cleaned['playwright'] = True
+                except Exception as e:
+                    logger.error(f"Failed to stop playwright: {e}", exc_info=True)
+                finally:
+                    self.playwright = None
+                    
+        except Exception as e:
+            logger.error(f"Browser cleanup failed: {e}", exc_info=True)
+        finally:
+            # Ensure all references are cleared
+            self.page = None
+            self.context = None
+            self.browser = None
+            self.playwright = None
+
+    async def __aenter__(self) -> "Browser":
+        """Context manager entry."""
+        await self.start()
+        return self
+        
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Context manager exit."""
+        await self.close()
