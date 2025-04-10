@@ -158,4 +158,88 @@ class ConfigurationManager:
         Returns:
             Dictionary of tool configurations
         """
-        return self._configs.copy() 
+        return self._configs.copy()
+
+
+@dataclass
+class ToolConfig:
+    """Basic configuration for tools."""
+    name: str
+    description: str
+    version: str = "0.1.0"
+    category: str = "General"
+    dependencies: Set[str] = field(default_factory=set)
+    enabled: bool = True
+
+
+class ToolConfigManager:
+    """Manager for tool configurations."""
+    
+    def __init__(self, config_dir: Optional[str] = None) -> None:
+        """Initialize the tool config manager.
+        
+        Args:
+            config_dir: Directory to store configuration files
+        """
+        self.config_dir = Path(config_dir or os.path.expanduser("~/.nova/tools"))
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self._configs: Dict[str, ToolConfig] = {}
+    
+    def get_config(self, tool_name: str) -> Optional[ToolConfig]:
+        """Get configuration for a tool.
+        
+        Args:
+            tool_name: Name of the tool
+            
+        Returns:
+            Tool configuration if found
+        """
+        return self._configs.get(tool_name)
+    
+    def set_config(self, config: ToolConfig) -> None:
+        """Set configuration for a tool.
+        
+        Args:
+            config: Tool configuration
+        """
+        self._configs[config.name] = config
+    
+    def list_tools(self) -> Dict[str, ToolConfig]:
+        """List all tool configurations.
+        
+        Returns:
+            Dictionary of tool configurations
+        """
+        return self._configs.copy()
+    
+    def is_enabled(self, tool_name: str) -> bool:
+        """Check if a tool is enabled.
+        
+        Args:
+            tool_name: Name of the tool
+            
+        Returns:
+            True if the tool is enabled, False otherwise
+        """
+        config = self.get_config(tool_name)
+        return config.enabled if config else False
+    
+    def enable_tool(self, tool_name: str) -> None:
+        """Enable a tool.
+        
+        Args:
+            tool_name: Name of the tool
+        """
+        config = self.get_config(tool_name)
+        if config:
+            config.enabled = True
+    
+    def disable_tool(self, tool_name: str) -> None:
+        """Disable a tool.
+        
+        Args:
+            tool_name: Name of the tool
+        """
+        config = self.get_config(tool_name)
+        if config:
+            config.enabled = False 

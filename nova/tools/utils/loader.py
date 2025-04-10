@@ -28,6 +28,28 @@ class ToolLoader:
         self._loaded_tools: Dict[str, Type[BaseTool]] = {}
         self._tool_paths: Dict[str, str] = {}
 
+    def discover_and_load_tools(self) -> Dict[str, Type[BaseTool]]:
+        """Discover and load all available tools.
+        
+        Returns:
+            Dictionary of tool names to tool classes
+        """
+        import os
+        from pathlib import Path
+        
+        # Get the Nova package base directory
+        base_dir = Path(__file__).parent.parent.parent.parent
+        tools_dir = base_dir / "nova" / "tools"
+        
+        # Discover tools in the tools directory
+        tool_paths = self.discover_tools(str(tools_dir))
+        
+        # Load each discovered tool
+        for path in tool_paths:
+            self.load_tool(path, str(base_dir))
+        
+        return self._loaded_tools
+
     def discover_tools(self, directory: str) -> List[str]:
         """Discover available tools in a directory.
         
