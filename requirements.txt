@@ -1,3 +1,11 @@
 requests>=2.31.0  # Required by example_api tool
 pyyaml>=6.0.1  # Required for YAML configuration support
 psutil>=5.9.0  # Required for memory/CPU monitoring
+fastapi>=0.105.0  # Required for web dashboard
+uvicorn>=0.24.0  # ASGI server for FastAPI
+jinja2>=3.1.2  # Templating for web pages
+websockets>=12.0  # Required for real-time updates
+playwright>=1.40.0  # Required for browser automation
+langchain-core>=0.1.0  # Required for language model integration
+pydantic>=2.0.0  # Required for data validation
+httpx>=0.25.0  # Required for async HTTP requests
