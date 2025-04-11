@@ -1,9 +1,10 @@
 import pytest
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import List
+
+from unittest.mock import AsyncMock, MagicMock
 from langchain_core.language_models.chat_models import BaseChatModel
 from nova.core.llm import LangChainAdapter, LLM
-from typing import List
 
 
 @pytest.fixture

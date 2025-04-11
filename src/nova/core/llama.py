@@ -1,19 +1,15 @@
 """Llama language model integration."""
 
-import os
 import logging
 import re
 import json
-import requests
-from typing import Any, Dict, List, Optional, cast, Union, AsyncIterator
-from pathlib import Path
+from typing import Any, Dict, List, Optional, AsyncIterator
 from functools import lru_cache
 from datetime import datetime, timedelta
 import aiohttp
 import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from cachetools import TTLCache, LRUCache
-import random
 
 from llama_cpp import Llama  # type: ignore
 from .monitoring import PerformanceMonitor

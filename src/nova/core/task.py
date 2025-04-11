@@ -1,9 +1,9 @@
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse
-from .llm import LLM, LLMPlan
+from .llm import LLM
 from .browser import Browser
 from .exceptions import TaskExecutionError
 import re
