@@ -3,10 +3,8 @@
 import asyncio
 import json
 import logging
-import sys
-from typing import Any, Dict, List, Optional, Tuple, Union
-
 import httpx
+from typing import Any, Dict, Tuple
 
 logger = logging.getLogger(__name__)
 

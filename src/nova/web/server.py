@@ -3,15 +3,13 @@
 import asyncio
 import datetime
 import logging
-import os
-import sys
 import traceback
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates

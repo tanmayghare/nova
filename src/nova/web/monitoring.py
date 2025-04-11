@@ -7,7 +7,7 @@ import os
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import psutil
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status

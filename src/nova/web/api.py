@@ -1,6 +1,5 @@
 """API endpoints for the Nova dashboard."""
 
-import asyncio
 import logging
 import json
 from datetime import datetime
@@ -13,7 +12,7 @@ from nova import __version__
 from ..core.agent import Agent
 from ..core.browser import Browser
 from ..core.llm import LLM
-from ..core.config import AgentConfig, BrowserConfig
+from ..core.config import BrowserConfig
 
 logger = logging.getLogger(__name__)
 
