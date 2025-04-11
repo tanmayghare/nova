@@ -1,7 +1,6 @@
 """Test advanced features of the tool system."""
 
 import asyncio
-import os
 from pathlib import Path
 
 from nova.tools.utils.config import AdvancedToolConfig, ConfigurationManager

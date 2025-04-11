@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, Sequence
 
 from nova.core.llama import LlamaModel
 from nova.core.agent import Agent

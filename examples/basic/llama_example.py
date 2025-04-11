@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 from nova.core.agent import Agent
-from nova.core.config import AgentConfig, BrowserConfig
+from nova.core.config import AgentConfig
 from nova.core.llm import LLM
 from nova.core.memory import Memory
 from nova.core.tools import Tool
@@ -51,19 +51,12 @@ async def main():
         temperature=float(os.getenv("AGENT_TEMPERATURE", "0.7")),
     )
     
-    # Create browser configuration
-    browser_config = BrowserConfig(
-        headless=os.getenv("BROWSER_HEADLESS", "true").lower() == "true",
-        timeout=int(os.getenv("BROWSER_TIMEOUT", "30000")),
-    )
-    
     # Create agent
     agent = Agent(
         llm=llm,
         tools=[MockTool()],
         memory=Memory(),
         config=config,
-        browser_config=browser_config,
     )
     
     # Run the agent with a simple task

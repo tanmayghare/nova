@@ -1,7 +1,6 @@
 """Test the enhanced tool system."""
 
 import asyncio
-import os
 import time
 from typing import Any, Dict
 
