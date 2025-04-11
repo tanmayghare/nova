@@ -1,0 +1,278 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any, Dict, Optional, List
+from datetime import datetime, timedelta
+
+from playwright.async_api import Browser as PlaywrightBrowser
+from playwright.async_api import (
+    BrowserContext,
+    Page,
+    async_playwright,
+)
+
+from .config import BrowserConfig
+
+logger = logging.getLogger(__name__)
+
+
+class Browser:
+    """A wrapper around Playwright's browser for web automation."""
+    
+    def __init__(self, config: Optional[BrowserConfig] = None) -> None:
+        """Initialize the browser with configuration.
+        
+        Args:
+            config: Browser configuration options
+        """
+        self.config = config or BrowserConfig()
+        self._browser: Optional[PlaywrightBrowser] = None
+        self._page: Optional[Page] = None
+        self._last_used: Optional[datetime] = None
+        
+    async def start(self) -> None:
+        """Start the browser instance."""
+        if self._browser is not None:
+            logger.warning("Browser already started")
+            return
+            
+        playwright = await async_playwright().start()
+        self._browser = await playwright.chromium.launch(
+            headless=self.config.headless,
+            args=self.config.browser_args
+        )
+        self._page = await self._browser.new_page()
+        if self.config.viewport:
+            await self._page.set_viewport_size(self.config.viewport)
+        self._last_used = datetime.now()
+        
+    async def stop(self) -> None:
+        """Stop the browser instance."""
+        if self._browser:
+            await self._browser.close()
+            self._browser = None
+            self._page = None
+            self._last_used = None
+            
+    async def navigate(self, url: str) -> None:
+        """Navigate to a URL.
+        
+        Args:
+            url: The URL to navigate to
+        """
+        if not self._page:
+            raise RuntimeError("Browser not started")
+            
+        # Ensure URL is properly formatted
+        if not isinstance(url, str):
+            url = str(url)
+        if not url.startswith(("http://", "https://")):
+            url = f"https://{url}"
+            
+        await self._page.goto(url)
+        self._last_used = datetime.now()
+        
+    async def click(self, selector: str) -> None:
+        """Click an element matching the selector.
+        
+        Args:
+            selector: CSS selector for the element to click
+        """
+        if not self._page:
+            raise RuntimeError("Browser not started")
+        await self._page.click(selector)
+        self._last_used = datetime.now()
+        
+    async def type(self, selector: str, text: str) -> None:
+        """Type text into an element matching the selector.
+        
+        Args:
+            selector: CSS selector for the element to type into
+            text: Text to type
+        """
+        if not self._page:
+            raise RuntimeError("Browser not started")
+        await self._page.fill(selector, text)
+        self._last_used = datetime.now()
+        
+    async def get_text(self, selector: str) -> str:
+        """Get text content from an element matching the selector.
+        
+        Args:
+            selector: CSS selector for the element to get text from
+            
+        Returns:
+            The text content of the element
+        """
+        if not self._page:
+            raise RuntimeError("Browser not started")
+        text = await self._page.text_content(selector)
+        self._last_used = datetime.now()
+        return text
+        
+    async def wait(self, selector: str, timeout: float = 10.0) -> None:
+        """Wait for an element matching the selector to appear.
+        
+        Args:
+            selector: CSS selector for the element to wait for
+            timeout: Maximum time to wait in seconds
+        """
+        if not self._page:
+            raise RuntimeError("Browser not started")
+        await self._page.wait_for_selector(selector, timeout=timeout * 1000)  # Convert to milliseconds
+        self._last_used = datetime.now()
+        
+    async def screenshot(self, path: Optional[str] = None) -> bytes:
+        """Take a screenshot of the current page.
+        
+        Args:
+            path: Optional path to save the screenshot to
+            
+        Returns:
+            The screenshot as bytes
+        """
+        if not self._page:
+            raise RuntimeError("Browser not started")
+        screenshot = await self._page.screenshot(path=path)
+        self._last_used = datetime.now()
+        return screenshot
+
+    def is_expired(self, max_age: timedelta) -> bool:
+        """Check if the browser instance has expired.
+        
+        Args:
+            max_age: Maximum age before expiration
+            
+        Returns:
+            True if the browser has expired, False otherwise
+        """
+        if not self._last_used:
+            return False
+        return datetime.now() - self._last_used > max_age
+
+
+class BrowserPool:
+    """A pool of browser instances for efficient resource management."""
+    
+    def __init__(self, size: int = 5, config: Optional[Dict[str, Any]] = None) -> None:
+        """Initialize the browser pool.
+        
+        Args:
+            size: Maximum number of browser instances in the pool
+            config: Browser configuration options
+        """
+        self.size = size
+        self.config = config or {}
+        self._browsers: List[Browser] = []
+        self._available: List[Browser] = []
+        self._in_use: List[Browser] = []
+        self._lock = asyncio.Lock()
+        self._started = False
+        self._max_age = timedelta(minutes=30)
+        
+    @property
+    def started(self) -> bool:
+        """Check if the pool has been started."""
+        return self._started
+        
+    async def start(self) -> None:
+        """Start the browser pool."""
+        if self._started:
+            logger.warning("Browser pool already started")
+            return
+            
+        async with self._lock:
+            # Create initial browser instances
+            for _ in range(self.size):
+                browser = Browser(self.config)
+                await browser.start()
+                self._browsers.append(browser)
+                self._available.append(browser)
+                
+            self._started = True
+            
+    async def stop(self) -> None:
+        """Stop the browser pool."""
+        if not self._started:
+            logger.warning("Browser pool not started")
+            return
+            
+        async with self._lock:
+            # Stop all browser instances
+            for browser in self._browsers:
+                await browser.stop()
+                
+            self._browsers.clear()
+            self._available.clear()
+            self._in_use.clear()
+            self._started = False
+            
+    async def acquire(self) -> Browser:
+        """Acquire a browser instance from the pool.
+        
+        Returns:
+            An available browser instance
+            
+        Raises:
+            RuntimeError: If no browsers are available
+        """
+        if not self._started:
+            raise RuntimeError("Browser pool not started")
+            
+        async with self._lock:
+            # Check for expired browsers
+            for browser in self._available:
+                if browser.is_expired(self._max_age):
+                    await browser.stop()
+                    await browser.start()
+                    
+            # Get an available browser
+            if self._available:
+                browser = self._available.pop()
+                self._in_use.append(browser)
+                return browser
+                
+            # Create a new browser if possible
+            if len(self._browsers) < self.size:
+                browser = Browser(self.config)
+                await browser.start()
+                self._browsers.append(browser)
+                self._in_use.append(browser)
+                return browser
+                
+            raise RuntimeError("No browsers available")
+            
+    async def release(self, browser: Browser) -> None:
+        """Release a browser instance back to the pool.
+        
+        Args:
+            browser: The browser instance to release
+        """
+        if not self._started:
+            raise RuntimeError("Browser pool not started")
+            
+        async with self._lock:
+            if browser in self._in_use:
+                self._in_use.remove(browser)
+                self._available.append(browser)
+                
+    async def cleanup(self) -> None:
+        """Clean up expired browser instances."""
+        if not self._started:
+            return
+            
+        async with self._lock:
+            # Clean up expired browsers
+            for browser in self._available:
+                if browser.is_expired(self._max_age):
+                    await browser.stop()
+                    self._available.remove(browser)
+                    self._browsers.remove(browser)
+                    
+            # Replace cleaned up browsers
+            while len(self._browsers) < self.size:
+                browser = Browser(self.config)
+                await browser.start()
+                self._browsers.append(browser)
+                self._available.append(browser)

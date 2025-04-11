@@ -8,18 +8,24 @@ import sys
 import traceback
 from pathlib import Path
 from typing import Any, Dict, Optional
+from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel
 
 from nova import __version__
 from nova.web.api import router as api_router
 from nova.web.monitoring import router as monitoring_router
 from nova.web.monitoring import startup_event
+from ..core.agent import Agent
+from ..core.memory import Memory
+from ..core.llm import LLM
+from ..core.monitoring import PerformanceMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +34,45 @@ package_dir = Path(__file__).parent
 static_dir = package_dir / "static"
 templates_dir = package_dir / "templates"
 
+# Global instances
+agent: Optional[Agent] = None
+memory: Optional[Memory] = None
+llm: Optional[LLM] = None
+monitor: Optional[PerformanceMonitor] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for FastAPI application."""
+    # Startup
+    logger.info("Starting Nova web server...")
+    global agent, memory, llm, monitor
+    
+    # Initialize components
+    memory = Memory()
+    llm = LLM()
+    monitor = PerformanceMonitor()
+    agent = Agent(memory=memory, llm=llm)
+    
+    # Start agent and background tasks
+    await agent.start()
+    await startup_event()
+    logger.info("Nova agent and background tasks started successfully")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Nova web server...")
+    if agent:
+        await agent.stop()
+    logger.info("Nova agent stopped successfully")
+
 # Create FastAPI app
 app = FastAPI(
     title="Nova Dashboard",
     description="Web interface for Nova Agent",
     version=__version__,
     debug=True,  # Enable debug mode
+    lifespan=lifespan
 )
 
 # Mount static files
@@ -84,18 +123,6 @@ def handle_exception(request: Request, exc: Exception) -> JSONResponse:
             "error_message": str(exc),
         },
     )
-
-# Register startup event
-@app.on_event("startup")
-async def on_startup():
-    """Start background tasks on application startup."""
-    try:
-        logger.info("Starting application background tasks...")
-        await startup_event()
-        logger.info("Background tasks started successfully")
-    except Exception as e:
-        logger.error(f"Error starting background tasks: {e}", exc_info=True)
-
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -169,6 +196,64 @@ async def settings(request: Request):
         logger.error(f"Error rendering settings page: {e}", exc_info=True)
         raise
 
+
+class TaskRequest(BaseModel):
+    """Task request model."""
+    description: str
+    url: Optional[str] = None
+
+@app.post("/api/tasks")
+async def create_task(task: TaskRequest):
+    """Create a new task."""
+    if not agent:
+        raise RuntimeError("Agent not initialized")
+    
+    task_id = await agent.create_task(
+        description=task.description,
+        url=task.url
+    )
+    return {"task_id": task_id}
+
+@app.get("/api/tasks/{task_id}")
+async def get_task(task_id: str):
+    """Get task status and results."""
+    if not agent:
+        raise RuntimeError("Agent not initialized")
+    
+    status = await agent.get_task_status(task_id)
+    results = await agent.get_task_results(task_id)
+    return {
+        "status": status,
+        "results": results
+    }
+
+@app.websocket("/ws/tasks/{task_id}")
+async def websocket_endpoint(websocket: WebSocket, task_id: str):
+    """WebSocket endpoint for real-time task updates."""
+    if not agent:
+        raise RuntimeError("Agent not initialized")
+    
+    await websocket.accept()
+    try:
+        while True:
+            status = await agent.get_task_status(task_id)
+            results = await agent.get_task_results(task_id)
+            await websocket.send_json({
+                "status": status,
+                "results": results
+            })
+            await asyncio.sleep(1)
+    except Exception as e:
+        logger.error(f"WebSocket error: {str(e)}")
+    finally:
+        await websocket.close()
+
+@app.get("/api/metrics")
+async def get_metrics():
+    """Get current performance metrics."""
+    if not monitor:
+        raise RuntimeError("Monitor not initialized")
+    return monitor.get_metrics()
 
 def run_server(host: str = "127.0.0.1", port: int = 8000, reload: bool = False) -> None:
     """Run the Nova dashboard server.

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -9,10 +10,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from pydantic import BaseModel, Field
 
 from nova import __version__
-from nova.core.agent import Agent
-from nova.core.browser import Browser
-from nova.core.llm import LLM
-from nova.core.config import AgentConfig, BrowserConfig
+from ..core.agent import Agent
+from ..core.browser import Browser
+from ..core.llm import LLM
+from ..core.config import AgentConfig, BrowserConfig
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,33 @@ class TaskStatus(BaseModel):
     task_id: str = Field(..., description="Task identifier")
     status: str = Field(..., description="Task status")
     created_at: datetime = Field(..., description="Task creation timestamp")
-    result: Optional[str] = Field(None, description="Task result")
+    result: Optional[Any] = Field(None, description="Task result")
     error: Optional[str] = Field(None, description="Error message if task failed")
+
+    @classmethod
+    def from_task_data(cls, task_data: Dict[str, Any]) -> "TaskStatus":
+        """Create a TaskStatus instance from task data.
+        
+        Args:
+            task_data: Raw task data dictionary
+            
+        Returns:
+            TaskStatus instance with parsed result
+        """
+        result = task_data.get("result")
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except json.JSONDecodeError:
+                pass  # Keep as string if not valid JSON
+                
+        return cls(
+            task_id=task_data["task_id"],
+            status=task_data["status"],
+            created_at=task_data["created_at"],
+            result=result,
+            error=task_data.get("error")
+        )
 
 
 @router.get("/info")
@@ -125,7 +151,7 @@ async def get_task(task_id: str) -> Dict[str, Any]:
             detail=f"Task {task_id} not found",
         )
     
-    return tasks[task_id]
+    return TaskStatus.from_task_data(tasks[task_id]).dict()
 
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -217,13 +243,13 @@ async def execute_task(task_id: str, task_request: TaskRequest) -> None:
             agent = active_agents.pop(task_id)
             try:
                 if agent.browser:
-                    await agent.browser.close()
+                    await agent.browser.stop()
             except Exception as e:
-                logger.error(f"Error closing browser: {e}", exc_info=True)
+                logger.error(f"Error stopping browser: {e}", exc_info=True)
         
-        # Force close browser if it's still open
+        # Force stop browser if it's still open
         if browser:
             try:
-                await browser.close()
+                await browser.stop()
             except Exception as e:
-                logger.error(f"Error force closing browser: {e}", exc_info=True) 
+                logger.error(f"Error force stopping browser: {e}", exc_info=True) 

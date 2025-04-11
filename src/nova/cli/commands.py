@@ -6,9 +6,9 @@ import sys
 from typing import Dict, List, Optional
 
 from nova import __version__
-from nova.core.agent import Agent
-from nova.core.config import AgentConfig, BrowserConfig
-from nova.core.llm import LLM
+from ..core.agent import Agent
+from ..core.config import AgentConfig, BrowserConfig
+from ..core.llm import LLM
 
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ async def run_command(task: str, model: str, headless: bool = False) -> int:
         print(f"Running task: {task}")
         
         # Import LlamaModel here to avoid circular imports
-        from nova.core.llama import LlamaModel
+        from ..core.llama import LlamaModel
         
         # Create browser config
         browser_config = BrowserConfig(headless=headless)
@@ -71,7 +71,7 @@ async def interactive_command(model: str) -> int:
         print("Type 'exit' or 'quit' to end the session\n")
         
         # Import LlamaModel here to avoid circular imports
-        from nova.core.llama import LlamaModel
+        from ..core.llama import LlamaModel
         
         # Initialize LLM
         llm = LlamaModel(model_name=model)
@@ -138,7 +138,7 @@ async def info_command() -> int:
     # Try to get LLM information
     try:
         # Import here to avoid circular imports
-        from nova.core.llama import LlamaModel
+        from ..core.llama import LlamaModel
         available_models = await LlamaModel.list_available_models()
         print("\nAvailable LLM models:")
         for model in available_models:
@@ -158,7 +158,7 @@ async def list_tools_command() -> int:
     try:
         # Try to use the tool loader, but handle the case when it doesn't work
         try:
-            from nova.tools.utils.loader import ToolLoader
+            from ..tools.utils.loader import ToolLoader
             
             # Create tool loader
             loader = ToolLoader()

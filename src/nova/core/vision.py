@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
-from nova.core.llama import LlamaModel
+from .llama import LlamaModel
 
 
 class VisionConfig(BaseModel):
