@@ -2,19 +2,17 @@ from __future__ import annotations
 
 """Language model integration."""
 
-from typing import Any, Dict, List, Optional, Union, Protocol, cast
-
-import logging
 import json
-import asyncio
-from datetime import datetime
-from langchain_core.language_models.chat_models import BaseChatModel
-from ollama import AsyncClient
+import logging
 import re
-from pydantic import BaseModel, Field, validator
+
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Protocol
 from urllib.parse import urlparse, urlunparse
 
-from .llama import LlamaModel
+from langchain_core.language_models.chat_models import BaseChatModel
+from ollama import AsyncClient
+from pydantic import BaseModel, Field, validator
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 """Mock performance monitor implementation for testing."""
 
 from typing import Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 
 class MockMonitor:
     """Mock performance monitor implementation for testing."""

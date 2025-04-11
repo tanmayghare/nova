@@ -3,13 +3,11 @@
 import asyncio
 import logging
 import pytest
-from typing import Dict, Any
 from datetime import datetime
 
 from nova.core.agent import Agent
 from nova.core.llm import LLM
 from nova.core.memory import Memory
-from nova.core.browser import BrowserPool
 from nova.core.config import AgentConfig, BrowserConfig
 
 logger = logging.getLogger(__name__)

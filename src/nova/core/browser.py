@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 
 from playwright.async_api import Browser as PlaywrightBrowser
 from playwright.async_api import (
-    BrowserContext,
     Page,
     async_playwright,
 )

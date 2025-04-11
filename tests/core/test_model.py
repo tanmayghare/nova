@@ -1,6 +1,4 @@
 import requests
-import json
-from typing import Optional, Dict, Any
 
 def test_ollama():
     """Test Ollama API integration"""

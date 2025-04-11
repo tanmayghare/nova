@@ -1,7 +1,6 @@
 """Example demonstrating hybrid automation with Nova, combining HTML parsing and vision analysis."""
 
 import asyncio
-import os
 import logging
 from rich.console import Console
 from rich.panel import Panel
@@ -12,7 +11,7 @@ from nova.core.config import AgentConfig, BrowserConfig
 from nova.core.llm import LLM
 from nova.core.memory import Memory
 from nova.core.llama import LlamaModel
-from nova.core.task_analyzer import TaskAnalyzer, AutomationType
+from nova.core.task_analyzer import TaskAnalyzer
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)

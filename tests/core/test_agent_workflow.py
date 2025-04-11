@@ -1,20 +1,10 @@
 """End-to-end tests for the agent workflow."""
 
-import os
-import json
 import asyncio
 import pytest
-from typing import Dict, List, Any
-from pathlib import Path
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
 
 from nova.core.agent import Agent
-from nova.core.config import AgentConfig, BrowserConfig
 from tests.core.mock_memory import MockMemory
-from tests.core.mock_llm import MockLLM
-from tests.core.mock_browser import MockBrowser
-from tests.core.mock_monitor import MockMonitor
 
 # Configure logging
 import logging

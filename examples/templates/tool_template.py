@@ -1,5 +1,5 @@
 from nova.tools import Tool
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 class CustomTool(Tool):
     def __init__(self):

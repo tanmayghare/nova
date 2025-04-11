@@ -1,6 +1,5 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-import json
 
 from nova.core.memory import Memory
 from nova.core.llm import LangChainAdapter

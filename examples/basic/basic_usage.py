@@ -1,13 +1,12 @@
 import asyncio
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, Sequence
 
 from nova.core.llama import LlamaModel
 from nova.core.agent import Agent
-from nova.core.browser import Browser
 from nova.core.config import AgentConfig, BrowserConfig
 from nova.core.llm import LLM
 from nova.core.memory import Memory
-from nova.core.tools import Tool, ToolRegistry
+from nova.core.tools import Tool
 
 
 class ExampleTool(Tool):

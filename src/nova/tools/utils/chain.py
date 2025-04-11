@@ -1,9 +1,9 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any, Dict, List, Optional, Set
 
-from nova.tools.base.tool import BaseTool, ToolResult
+from nova.tools.base.tool import ToolResult
 from nova.tools.base.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)

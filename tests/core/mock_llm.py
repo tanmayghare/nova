@@ -1,7 +1,7 @@
 """Mock LLM implementation for testing."""
 
 import json
-from typing import Dict, List, Any, Optional
+from typing import Any, Optional
 from datetime import datetime, timedelta
 
 class MockLLM:

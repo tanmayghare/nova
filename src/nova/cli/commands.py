@@ -1,15 +1,12 @@
 """CLI command implementations."""
 
-import asyncio
 import logging
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from nova import __version__
 from ..core.agent import Agent
-from ..core.config import AgentConfig, BrowserConfig
-from ..core.llm import LLM
-
+from ..core.config import BrowserConfig
 
 logger = logging.getLogger(__name__)
 

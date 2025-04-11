@@ -1,6 +1,6 @@
 """Vision capabilities for Nova."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from pydantic import BaseModel, Field
 

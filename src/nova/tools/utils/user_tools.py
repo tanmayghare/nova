@@ -3,7 +3,7 @@
 import os
 import sys
 import importlib.util
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 

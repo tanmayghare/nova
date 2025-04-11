@@ -1,7 +1,7 @@
+import asyncio
 import pytest
 from datetime import datetime
 from nova.core.memory import Memory
-import asyncio
 
 
 @pytest.mark.asyncio

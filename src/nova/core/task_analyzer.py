@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Any, List
+from typing import Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)

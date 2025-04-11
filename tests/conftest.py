@@ -1,5 +1,4 @@
 import pytest
-from typing import Any, Dict, Generator, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 from nova.core.agent import Agent
@@ -7,7 +6,7 @@ from nova.core.browser import Browser
 from nova.core.config import AgentConfig, BrowserConfig
 from nova.core.llm import LLM
 from nova.core.memory import Memory
-from nova.core.tools import Tool, ToolRegistry
+from nova.core.tools import Tool
 
 
 @pytest.fixture

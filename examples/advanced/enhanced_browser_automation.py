@@ -7,13 +7,11 @@ This example demonstrates:
 - Element highlighting
 """
 
-import os
 import asyncio
 from rich.console import Console
 from rich.panel import Panel
 from nova.core.agent import Agent
 from nova.core.config import AgentConfig, BrowserConfig, LlmConfig
-from nova.core.task_analyzer import AutomationType
 
 async def main():
     # Initialize rich console for visual feedback

@@ -4,7 +4,6 @@ import asyncio
 from pathlib import Path
 
 from nova.tools.utils.config import AdvancedToolConfig, ConfigurationManager
-from nova.tools.utils.metrics import MetricsCollector
 from nova.tools.utils.user_tools import UserToolManager
 from examples.tool_system_test import CalculatorTool
 

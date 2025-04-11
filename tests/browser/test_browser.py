@@ -1,5 +1,5 @@
 import pytest
-from typing import AsyncGenerator, Dict, Optional
+from typing import AsyncGenerator, Dict
 
 from nova.core.browser import Browser
 from nova.core.config import BrowserConfig

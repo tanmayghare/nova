@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from nova.core.agent import Agent as CoreAgent
-from nova.core.browser import Browser
 from nova.core.config import AgentConfig, BrowserConfig
 from nova.core.llm import LLM
 from nova.core.memory import Memory

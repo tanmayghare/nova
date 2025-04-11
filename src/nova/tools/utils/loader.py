@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Type
 
-from nova.tools.base.tool import BaseTool, ToolConfig
+from nova.tools.base.tool import BaseTool
 from nova.tools.utils.config import ToolConfigManager
 
 logger = logging.getLogger(__name__)
