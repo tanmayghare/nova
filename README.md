@@ -1,84 +1,23 @@
-# Nova
+# Nova - Intelligent Browser Automation
 
-An intelligent browser automation agent built with Python.
+This is the root directory of the Nova project. For detailed documentation, please refer to:
 
-## Features
+- [Project Overview](docs/README.md)
+- [User Guides](docs/user-guides/)
+- [API Documentation](docs/api/)
+- [Architecture](docs/architecture/)
+- [Deployment Guide](docs/deployment/)
 
-- Browser automation using Playwright
-- LLM-powered decision making
-- State management
-- Memory system
-- Action execution
-- Error handling
+## Quick Start
 
-## Installation
-
-1. Clone the repository:
+1. Install dependencies:
 ```bash
-git clone https://github.com/yourusername/nova.git
-cd nova
+pip install -r requirements.txt
 ```
 
-2. Install dependencies:
+2. Run the server:
 ```bash
-pip install -e .
+python run_server.py
 ```
 
-3. Install Playwright:
-```bash
-playwright install chromium
-```
-
-4. Install Ollama and pull the model:
-```bash
-ollama pull llama3.2:3b-instruct-q8_0
-```
-
-## Usage
-
-```python
-from nova.core.agent import Agent
-from nova.core.llama import LlamaModel
-
-# Initialize the agent
-model = LlamaModel(model_name="llama3.2:3b-instruct-q8_0")
-agent = Agent(
-    task="Navigate to example.com and click the first link",
-    llm=model
-)
-
-# Run the agent
-result = await agent.run()
-print(result)
-```
-
-## Project Structure
-
-```
-nova/
-├── core/           # Core components
-│   ├── agent.py    # Main agent class
-│   ├── browser.py  # Browser control
-│   ├── memory.py   # Memory system
-│   └── state.py    # State management
-├── types/          # Type definitions
-│   └── actions.py  # Action types
-├── tests/          # Test suite
-└── examples/       # Usage examples
-```
-
-## Development
-
-1. Install development dependencies:
-```bash
-pip install -e ".[dev]"
-```
-
-2. Run tests:
-```bash
-pytest
-```
-
-## License
-
-MIT License 
+For development setup, see the [Development Guide](docs/user-guides/development.md). 
