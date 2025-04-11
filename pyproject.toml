@@ -13,7 +13,7 @@ dependencies = [
     "typing-extensions>=4.0.0"
 ]
 requires-python = ">=3.9"
-readme = "README.md"
+readme = "docs/README.md"
 license = { text = "MIT" }
 
 [project.optional-dependencies]
@@ -45,10 +45,10 @@ ignore = ["E501"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=nova --cov-report=term-missing"
+addopts = "-v --cov=src.nova --cov-report=term-missing"
 
 [tool.coverage.run]
-source = ["nova"]
+source = ["src/nova"]
 omit = ["*/tests/*"]
 
 [tool.coverage.report]

@@ -3,7 +3,8 @@ from setuptools import find_packages, setup
 setup(
     name="nova",
     version="0.1.0",
-    packages=find_packages(),
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
     install_requires=[
         "playwright>=1.40.0",
         "langchain>=0.1.0",
@@ -22,7 +23,7 @@ setup(
     python_requires=">=3.9",
     entry_points={
         "console_scripts": [
-            "nova=nova.cli.cli:main",
+            "nova=src.nova.cli.cli:main",
         ],
     },
 )
