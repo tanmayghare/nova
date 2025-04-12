@@ -11,8 +11,10 @@ from typing import Any, Dict, List, Optional, Protocol
 from urllib.parse import urlparse, urlunparse
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from ollama import AsyncClient
 from pydantic import BaseModel, Field, validator
+
+from .nim_provider import NIMProvider
+from .llama import LlamaModel
 
 logger = logging.getLogger(__name__)
 
@@ -294,243 +296,89 @@ class LLM:
     
     def __init__(
         self,
-        model_name: str = "mistral-small3.1:24b-instruct-2503-q4_K_M",
+        provider: str = "nim",  # Default to NIM provider
+        docker_image: str = "nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:latest",
+        api_base: str = "http://localhost:8000",
+        model_name: str = "nvidia/llama-3.3-nemotron-super-49b-v1",
         batch_size: int = 4,
         enable_streaming: bool = True,
+        **kwargs: Any
     ) -> None:
         """Initialize the language model.
         
         Args:
+            provider: LLM provider to use ("nim" or "ollama")
+            docker_image: Docker image for NIM service
+            api_base: Base URL for NIM API
             model_name: Name of the model to use
             batch_size: Maximum number of requests to process in parallel
             enable_streaming: Whether to enable response streaming
+            **kwargs: Additional provider-specific arguments
         """
+        self.provider = provider.lower()
         self.model_name = model_name
-        self.client = AsyncClient()
         self._batch_size = batch_size
         self._enable_streaming = enable_streaming
-        self._token_count = 0
-        self._last_token_reset = datetime.now()
+        self._last_response = None  # Initialize last response
+        
+        # Initialize the appropriate provider
+        if self.provider == "nim":
+            self._provider = NIMProvider(
+                docker_image=docker_image,
+                api_base=api_base,
+                model_name=model_name,
+                batch_size=batch_size,
+                enable_streaming=enable_streaming,
+                **kwargs
+            )
+        elif self.provider == "ollama":
+            self._provider = LlamaModel(
+                model_name=model_name,
+                batch_size=batch_size,
+                enable_streaming=enable_streaming,
+                **kwargs
+            )
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
         
     async def generate(self, prompt: str, max_tokens: int = 1000) -> str:
-        """Generate a response from the model.
-        
-        Args:
-            prompt: Input prompt
-            max_tokens: Maximum number of tokens to generate
-            
-        Returns:
-            Generated text
-            
-        Raises:
-            RuntimeError: If model fails to generate response
-        """
-        try:
-            response = await self.client.generate(
-                model=self.model_name,
-                prompt=prompt,
-                options={
-                    "num_predict": max_tokens,
-                }
-            )
-            # Ollama response has 'response' key instead of 'content'
-            return response["response"]
-        except Exception as e:
-            logger.error(f"LLM generation failed: {e}", exc_info=True)
-            raise RuntimeError(f"Failed to generate response: {str(e)}")
-            
-    async def generate_plan(self, task: str, context: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """Generate a plan for the given task with improved error handling and validation."""
-        try:
-            # Enhanced prompt with clear format requirements and examples
-            prompt = f"""You are a task planning assistant. Generate a plan for the following task:
-{task}
-
-You must respond with ONLY a JSON object in the following format, with no additional text or formatting:
-{{
-    "status": "success",
-    "plan": {{
-        "steps": [
-            {{
-                "type": "tool",
-                "tool": "navigate",
-                "input": {{
-                    "url": "https://example.com"
-                }}
-            }},
-            {{
-                "type": "tool",
-                "tool": "type",
-                "input": {{
-                    "selector": ".search-input",
-                    "text": "search query"
-                }}
-            }},
-            {{
-                "type": "tool",
-                "tool": "click",
-                "input": {{
-                    "selector": ".submit-button"
-                }}
-            }}
-        ],
-        "reasoning": "Explanation of the plan steps"
-    }}
-}}
-
-Rules:
-1. Respond with ONLY the JSON object, no other text
-2. Each step must have exactly these fields: type, tool, input
-3. The type field must be "tool"
-4. Valid tools are: navigate, click, type
-5. For navigate tool: input must have url
-6. For click tool: input must have selector
-7. For type tool: input must have both selector and text
-8. All URLs must include https:// or http://
-9. All selectors must be valid CSS selectors"""
-
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    response_text = await self.generate(prompt)
-                    logger.info(f"Raw LLM response (attempt {attempt + 1}): {response_text}")
-
-                    # Extract JSON from the response
-                    try:
-                        # Try to find JSON in the response
-                        json_match = re.search(r'(\{[\s\S]*\})', response_text)
-                        if json_match:
-                            json_str = json_match.group(1)
-                            plan_data = json.loads(json_str)
-                        else:
-                            logger.warning(f"No JSON found in response (attempt {attempt + 1})")
-                            continue
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Failed to parse JSON (attempt {attempt + 1}): {str(e)}")
-                        continue
-
-                    # Validate the plan structure
-                    if not isinstance(plan_data, dict):
-                        logger.warning(f"Plan is not a dictionary (attempt {attempt + 1})")
-                        continue
-
-                    if "status" not in plan_data or plan_data["status"] != "success":
-                        logger.warning(f"Invalid status (attempt {attempt + 1})")
-                        continue
-
-                    if "plan" not in plan_data:
-                        logger.warning(f"Missing plan field (attempt {attempt + 1})")
-                        continue
-
-                    plan = plan_data["plan"]
-                    if not isinstance(plan, dict) or "steps" not in plan:
-                        logger.warning(f"Invalid plan format: missing steps")
-                        continue
-
-                    steps = plan["steps"]
-                    if not isinstance(steps, list):
-                        logger.warning(f"Invalid steps format (attempt {attempt + 1})")
-                        continue
-
-                    # Validate each step
-                    valid_steps = True
-                    for i, step in enumerate(steps):
-                        if not isinstance(step, dict):
-                            logger.warning(f"Invalid step format at index {i} (attempt {attempt + 1})")
-                            valid_steps = False
-                            break
-
-                        if "type" not in step or step["type"] != "tool":
-                            logger.warning(f"Missing or invalid type in step {i} (attempt {attempt + 1})")
-                            valid_steps = False
-                            break
-
-                        if "tool" not in step or not isinstance(step["tool"], str):
-                            logger.warning(f"Missing or invalid tool in step {i} (attempt {attempt + 1})")
-                            valid_steps = False
-                            break
-
-                        if "input" not in step or not isinstance(step["input"], dict):
-                            logger.warning(f"Missing or invalid input in step {i} (attempt {attempt + 1})")
-                            valid_steps = False
-                            break
-
-                        # Validate tool-specific parameters
-                        tool = step["tool"].lower()
-                        input_params = step["input"]
-                        
-                        if tool == "navigate":
-                            if "url" not in input_params:
-                                logger.warning(f"Missing url parameter for navigate tool in step {i}")
-                                valid_steps = False
-                                break
-                            # Ensure URL has protocol
-                            url = input_params["url"]
-                            if not url.startswith(("http://", "https://")):
-                                input_params["url"] = f"https://{url}"
-                            
-                        elif tool == "click":
-                            if "selector" not in input_params:
-                                logger.warning(f"Missing selector parameter for click tool in step {i}")
-                                valid_steps = False
-                                break
-                            
-                        elif tool == "type":
-                            if "selector" not in input_params or "text" not in input_params:
-                                logger.warning(f"Missing selector or text parameter for type tool in step {i}")
-                                valid_steps = False
-                                break
-                        else:
-                            logger.warning(f"Invalid tool type '{tool}' in step {i}")
-                            valid_steps = False
-                            break
-
-                    if not valid_steps:
-                        continue
-
-                    # Return just the steps list to match the protocol
-                    return steps
-
-                except Exception as e:
-                    logger.error(f"Error generating plan (attempt {attempt + 1}): {str(e)}")
-                    if attempt == max_retries - 1:
-                        raise
-
-            raise Exception("Failed to generate valid plan after multiple attempts")
-
-        except Exception as e:
-            logger.error(f"Error in generate_plan: {str(e)}")
-            raise
-            
+        """Generate a response from the model."""
+        response = await self._provider.generate(prompt, max_tokens=max_tokens)
+        self._last_response = response
+        return response
+    
+    async def generate_plan(self, task: str, context: str) -> List[Dict[str, Any]]:
+        """Generate a plan for executing a task."""
+        plan = await self._provider.generate_plan(task, context)
+        self._last_response = plan
+        return plan
+    
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
-        """Generate a response based on task execution results.
+        """Generate a response based on task execution results."""
+        response = await self._provider.generate_response(task, plan, context)
+        self._last_response = response
+        return response
+    
+    async def generate_batch(self, prompts: List[str], **kwargs: Any) -> List[str]:
+        """Generate responses for multiple prompts in parallel."""
+        return await self._provider.generate_batch(prompts, **kwargs)
+    
+    async def generate_stream(self, prompt: str, **kwargs: Any) -> AsyncIterator[str]:
+        """Generate a streaming response from the model."""
+        return await self._provider.generate_stream(prompt, **kwargs)
+    
+    def get_token_count(self) -> int:
+        """Get the current token count."""
+        return self._provider.get_token_count()
+    
+    def reset_token_count(self) -> None:
+        """Reset the token count."""
+        self._provider.reset_token_count()
+    
+    def get_last_response(self) -> Optional[Any]:
+        """Get the last response from the model.
         
-        Args:
-            task: The original task
-            plan: The executed plan with results
-            context: Additional context
-            
         Returns:
-            Generated response summarizing the results
+            The last response generated by any of the generate methods
         """
-        prompt = f"""You are Nova, an intelligent browser automation agent. Generate a response for this completed task:
-
-Task: {task}
-
-Context: {context}
-
-Executed Plan:
-{json.dumps(plan, indent=2)}
-
-Generate a natural language response that:
-1. Summarizes what was done
-2. Explains any errors or issues encountered
-3. Provides the final result or outcome
-
-Response:"""
-
-        try:
-            return await self.generate(prompt)
-        except Exception as e:
-            logger.error(f"Response generation failed: {e}", exc_info=True)
-            raise 
+        return self._last_response 
