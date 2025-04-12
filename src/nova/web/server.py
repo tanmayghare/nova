@@ -195,6 +195,24 @@ async def settings(request: Request):
         raise
 
 
+@app.get("/new_task", response_class=HTMLResponse)
+async def new_task(request: Request):
+    """Render the new task page."""
+    try:
+        logger.info("Rendering new task page")
+        return templates.TemplateResponse(
+            "new_task.html", 
+            {
+                "request": request, 
+                "version": __version__,
+                "title": "New Task - Nova Dashboard",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error rendering new task page: {e}", exc_info=True)
+        raise
+
+
 class TaskRequest(BaseModel):
     """Task request model."""
     description: str

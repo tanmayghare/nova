@@ -2,6 +2,7 @@
 
 import logging
 import json
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -20,8 +21,42 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["api"])
 
 # Task storage
+TASKS_FILE = "tasks.json"
 tasks: Dict[str, Dict[str, Any]] = {}
 active_agents: Dict[str, Agent] = {}
+
+def load_tasks():
+    """Load tasks from file."""
+    global tasks
+    if os.path.exists(TASKS_FILE):
+        try:
+            with open(TASKS_FILE, "r") as f:
+                data = json.load(f)
+                # Convert list to dictionary if needed
+                if isinstance(data, list):
+                    tasks = {}
+                    for i, task in enumerate(data):
+                        tasks[f"task_{i}"] = task
+                else:
+                    tasks = data
+        except Exception as e:
+            logger.error(f"Error loading tasks: {e}")
+            tasks = {}
+    else:
+        logger.info(f"Tasks file not found, creating new one at {TASKS_FILE}")
+        tasks = {}
+        save_tasks()
+
+def save_tasks():
+    """Save tasks to file."""
+    try:
+        with open(TASKS_FILE, "w") as f:
+            json.dump(tasks, f, default=str)
+    except Exception as e:
+        logger.error(f"Error saving tasks: {e}")
+
+# Load tasks on startup
+load_tasks()
 
 
 class TaskRequest(BaseModel):
@@ -106,10 +141,15 @@ async def create_task(task_request: TaskRequest, background_tasks: BackgroundTas
         "model": task_request.model,
         "headless": task_request.headless,
         "status": "pending",
-        "created_at": datetime.now(),
+        "created_at": datetime.now().isoformat(),
         "result": None,
         "error": None,
+        "steps": [],  # Track individual steps
+        "llm_response": None,  # Store LLM response
     }
+    
+    # Save tasks
+    save_tasks()
     
     # Schedule task for execution
     background_tasks.add_task(execute_task, task_id, task_request)
@@ -128,6 +168,9 @@ async def list_tasks() -> List[Dict[str, Any]]:
     Returns:
         List of tasks
     """
+    # Ensure tasks is a dictionary
+    if isinstance(tasks, list):
+        return []
     return list(tasks.values())
 
 
@@ -202,16 +245,26 @@ async def execute_task(task_id: str, task_request: TaskRequest) -> None:
         
         # Update task status
         tasks[task_id]["status"] = "running"
+        save_tasks()
         
         # Execute task
         result = await agent.run(task_request.task)
         
+        # Get LLM response
+        try:
+            llm_response = agent.llm.get_last_response()
+        except AttributeError:
+            logger.warning("LLM response not available, using result as response")
+            llm_response = str(result)
+        
         # Update task status and result
         tasks[task_id].update({
-            "status": "success",
+            "status": "completed",
             "result": str(result),
-            "completed_at": datetime.now(),
+            "llm_response": llm_response,
+            "completed_at": datetime.now().isoformat(),
         })
+        save_tasks()
         
         # Record in execution history
         from nova.web.monitoring import add_execution_record
@@ -223,10 +276,11 @@ async def execute_task(task_id: str, task_request: TaskRequest) -> None:
     except Exception as e:
         # Update task status with error
         tasks[task_id].update({
-            "status": "error",
+            "status": "failed",
             "error": str(e),
-            "completed_at": datetime.now(),
+            "completed_at": datetime.now().isoformat(),
         })
+        save_tasks()
         
         # Record error in execution history
         from nova.web.monitoring import add_execution_record
