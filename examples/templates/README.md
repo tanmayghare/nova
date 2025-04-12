@@ -49,7 +49,7 @@ description: "Description of my custom agent"
 
 settings:
   model: "gpt-4"
-  temperature: 0.7
+  temperature: 0.1
   max_tokens: 2000
 
 tools:

@@ -11,3 +11,4 @@ pydantic>=2.0.0  # Required for data validation
 httpx>=0.25.0  # Required for async HTTP requests
 cachetools>=5.5.2  # Required for LLM response caching
 tenacity>=9.1.2  # Required for retry mechanisms
+aiohttp>=3.8.0  # Required for async HTTP requests
