@@ -2,7 +2,6 @@
 
 import json
 import logging
-import re
 import os
 from typing import Any, Dict, List, Optional, AsyncIterator
 from datetime import datetime, timedelta
@@ -10,6 +9,7 @@ import aiohttp
 import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from pydantic import BaseModel, Field
+import re
 
 from .language_model import LanguageModel
 from .monitoring import PerformanceMonitor
@@ -138,37 +138,46 @@ class NIMProvider(LanguageModel):
         retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError))
     )
     async def _make_request(self, endpoint: str, data: Dict[str, Any], timeout: float = 30.0) -> Dict[str, Any]:
-        """Make a request to the NIM API with retry and circuit breaker."""
+        """Make a request to the NIM API with retry logic and circuit breaking."""
+        self._check_circuit_breaker()
+        api_key = self._get_api_key()
+        url = f"{self.config.api_base}/v1/{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
         try:
-            self._check_circuit_breaker()
-            
-            # Move parameters into nvext object
-            nvext = {}
-            for param in ['repetition_penalty', 'top_k']:
-                if param in data:
-                    nvext[param] = data.pop(param)
-            
-            if nvext:
-                data['nvext'] = nvext
-            
+            logger.debug(f"NIM Request - URL: {url}")
+            # logger.debug(f"NIM Request - Headers: {headers}") # Optional: Log headers (beware of key exposure)
+            logger.debug(f"NIM Request - Body: {json.dumps(data)}")
+            logger.info(f"NIM Request - Sending POST to {url}...")
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f"{self.config.api_base}/v1/{endpoint}",
+                    url,
                     json=data,
-                    headers={
-                        "Authorization": f"Bearer {self._get_api_key()}",
-                        "Content-Type": "application/json"
-                    },
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(total=timeout)
                 ) as response:
+                    logger.info(f"NIM Response - Received Status: {response.status} from {url}")
                     if response.status != 200:
                         self._circuit_breaker['failures'] += 1
-                        raise RuntimeError(f"NIM API request failed: {await response.text()}")
-                    return await response.json()
+                        response_text = await response.text()
+                        logger.error(f"NIM Response - Error Body: {response_text}")
+                        raise RuntimeError(f"NIM API request failed ({response.status}): {response_text}")
+                    
+                    logger.debug("NIM Response - Reading body...")
+                    response_json = await response.json()
+                    logger.debug(f"NIM Response - Body JSON: {response_json}")
+                    # Reset circuit breaker on success
+                    self._circuit_breaker['failures'] = 0
+                    self._circuit_breaker['last_attempt'] = datetime.now()
+                    return response_json
         except Exception as e:
             self._circuit_breaker['failures'] += 1
-            logger.error(f"Request failed: {str(e)}")
-            raise
+            self._circuit_breaker['last_attempt'] = datetime.now()
+            logger.error(f"NIM Request - Failed: {str(e)}", exc_info=True)
+            raise # Re-raise the exception after logging
 
     def _get_api_key(self) -> str:
         """Get the NIM API key from environment variables."""
@@ -186,17 +195,33 @@ class NIMProvider(LanguageModel):
     ) -> str:
         """Generate text using the NIM API."""
         try:
+            # Prepare base data, using kwargs to override config defaults if provided
             data = {
                 "model": self.config.model_name,
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": self.config.temperature,
-                "max_tokens": self.config.max_tokens,
-                "top_p": self.config.top_p,
-                "top_k": self.config.top_k,
-                "repetition_penalty": self.config.repetition_penalty,
-                "stop": [stop] if stop else None
+                "temperature": kwargs.get('temperature', self.config.temperature),
+                "max_tokens": kwargs.get('max_tokens', self.config.max_tokens),
+                "top_p": kwargs.get('top_p', self.config.top_p),
+                "stop": [stop] if stop else kwargs.get('stop'), # Allow stop via arg or kwargs
+                # Do not include stream: True here for non-streaming generate
             }
+
+            # Handle nvext parameters
+            nvext_params = {}
+            top_k_val = kwargs.get('top_k', self.config.top_k)
+            if top_k_val is not None: # Check if top_k should be included
+                nvext_params["top_k"] = top_k_val
             
+            rep_penalty_val = kwargs.get('repetition_penalty', self.config.repetition_penalty)
+            if rep_penalty_val is not None: # Check if repetition_penalty should be included
+                nvext_params["repetition_penalty"] = rep_penalty_val
+
+            if nvext_params: # Only add nvext if it contains parameters
+                data["nvext"] = nvext_params
+                
+            # Filter out None values from the main data dict AFTER processing
+            data = {k: v for k, v in data.items() if v is not None}
+
             response = await self._make_request("chat/completions", data)
             if "choices" in response and len(response["choices"]) > 0:
                 if "message" in response["choices"][0]:
@@ -209,108 +234,153 @@ class NIMProvider(LanguageModel):
             logger.error(f"Error generating text: {e}", exc_info=True)
             raise
 
-    async def generate_plan(self, task: str, context: str) -> List[Dict[str, Any]]:
-        """Generate a plan for executing a task."""
-        # Convert task and context to strings if they're not already
+    async def generate_plan(self, task: str, context: str) -> tuple[str, List[Dict[str, Any]]]:
+        """Generate a plan (thought and action) for executing a task using the NIM API."""
         task_str = str(task) if task is not None else ""
         context_str = str(context) if context is not None else ""
         
-        prompt = f"""You are Nova, an intelligent browser automation agent. Generate a plan to accomplish this task:
+        # --- Use the ReAct Prompt (copied from LangChainAdapter, ensure correct formatting) ---
+        # Use triple quotes for the main f-string
+        prompt = f"""You are Nova, an intelligent browser automation agent designed to accomplish tasks by interacting with web pages using available tools.
+
+Your goal is to generate a plan to accomplish the given task based on the current context, **including the structure of the current web page**. Follow the Thought-Action format:
+
+1.  **Thought:** Briefly explain your reasoning process. 
+    - Analyze the `Initial Task Context` and `Recent Execution History`.
+    - **Critically examine the `Current Page Structure (After Previous Action)` JSON.** 
+    - Note the outcome (`observation`) of the last step in the history, including any errors or the path to a `screenshot` taken after the action.
+    - Determine the single best next step towards the `Task` goal based *primarily* on the current page structure and history.
+    - If the goal is achieved according to the history and current page state, explain why and use the 'finish' tool.
+2.  **Action:** Generate the plan as a JSON array containing the **single next step** (a tool call or the 'finish' action).
 
 Task: {task_str}
 
-Context: {context_str}
+Context:
+```
+{context_str}
+```
+*Note: The context above includes initial context, the current page structure **captured after the previous action completed**, and recent history. Each history entry includes 'thought', 'action', and 'observation'. The observation contains the action's 'status', 'result' or 'error', and potentially a 'screenshot' file path.* 
 
 Available tools:
-- navigate: Navigate to a URL (input: url)
-- click: Click an element matching a selector (input: selector)
-- type: Type text into an element (input: selector, text)
-- wait: Wait for an element to appear (input: selector, timeout)
-- screenshot: Take a screenshot of the current page (input: path)
+- navigate: Navigate to a URL (input: {{'url': '...'}})
+- click: Click an element matching a selector (input: {{'selector': '...'}})
+- type: Type text into an element (input: {{'selector': '...', 'text': '...'}})
+- wait: Wait for an element to appear (input: {{'selector': '...', 'timeout': ...}})
+- screenshot: Take a screenshot (input: {{'path': '...'}})
+- finish: Use this tool **only** when the task goal is fully achieved. (input: {{'reason': '...'}} - Optional reason for completion)
 
-Generate a plan with specific steps. Each step should use one of the available tools.
-For each step, specify the tool name and its required input parameters.
+Output Format:
+Your final output **must** be a valid JSON object containing two keys: 'thought' and 'plan'.
+The 'thought' value should be a string containing your reasoning.
+The 'plan' value should be a JSON array containing **exactly one** step object (either a tool action or the 'finish' action).
 
-IMPORTANT: Respond ONLY with a valid JSON array of steps. Each step must include the tool name and its input parameters.
-Do not include any explanations, notes, or additional text. Just the JSON array.
+Example (Action Step):
+```json
+{{
+  "thought": "The task is to click the login button. Looking at the `Current Page Structure (After Previous Action)`, I see a button with `text: 'Login'` and `attributes: {{'id': 'login-btn'}}`. I will use the click tool with the selector '#login-btn'.",
+  "plan": [
+    {{"tool": "click", "input": {{"selector": "#login-btn"}}}}
+  ]
+}}
+```
 
-Example format:
-[
-    {{"tool": "navigate", "input": {{"url": "https://example.com"}}}},
-    {{"tool": "click", "input": {{"selector": "#submit-button"}}}},
-    {{"tool": "screenshot", "input": {{"path": "result.png"}}}}
-]
+Example (Finish Step):
+```json
+{{
+  "thought": "The user asked for the page title, and the context shows the title is 'Example Domain'. The task is complete.",
+  "plan": [
+    {{"tool": "finish", "input": {{"reason": "Found the page title as requested."}}}}
+  ]
+}}
+```
 
-Generate the plan:"""
+Generate the thought and the single next step (or finish action) for the task:"""
+        # --- End Prompt ---
 
         try:
-            response = await self.generate(prompt)
-            if not response:
-                logger.warning("Invalid response from NIM API, using default plan")
-                return self._get_default_plan(task)
+            # Use the standard generate method which now handles nvext correctly
+            response_text = await self.generate(prompt)
+            if not response_text:
+                logger.warning("Invalid response (empty) from NIM API, returning empty plan")
+                return "", []
             
-            try:
-                plan = self._parse_plan_response({"response": response})
-                logger.info("Successfully parsed plan: %s", plan)
-                return plan
-            except Exception as e:
-                logger.warning("Failed to parse plan: %s, using default plan", e)
-                return self._get_default_plan(task)
+            # Parse the response expecting the {"thought": ..., "plan": [...]} structure
+            thought, plan_steps = self._parse_thought_plan_response(response_text)
+            logger.info("Successfully parsed thought and plan steps.")
+            return thought, plan_steps
             
         except Exception as e:
-            logger.warning("Failed to generate plan with NIM: %s, using default plan", e)
-            return self._get_default_plan(task)
+            # Log the specific error during generation or parsing
+            logger.error(f"Failed to generate or parse plan with NIM: {e}", exc_info=True)
+            # Return empty thought and plan on any failure during this process
+            return "", []
 
-    def _get_default_plan(self, task: str) -> List[Dict[str, Any]]:
-        """Get a default plan for the task."""
-        if "amazon.com" in task and "laptop" in task:
-            return [{
-                "tool": "navigate",
-                "input": {
-                    "url": "https://www.amazon.com/s?k=laptop"
-                }
-            }, {
-                "tool": "extract",
-                "input": {
-                    "selector": "div[data-component-type='s-search-result']",
-                    "id": "products",
-                    "limit": 3
-                }
-            }]
-        else:
-            return [{
-                "tool": "navigate",
-                "input": {
-                    "url": "https://example.com"
-                }
-            }]
+    # Remove the old _get_default_plan method as fallback now returns empty
+    # def _get_default_plan(self, task: str) -> List[Dict[str, Any]]: ... 
 
-    def _parse_plan_response(self, response: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Parse the plan response from the model."""
+    # Remove the old _parse_plan_response method
+    # def _parse_plan_response(self, response: Dict[str, Any]) -> List[Dict[str, Any]]: ...
+
+    # --- Add new parsing method for Thought/Plan JSON ---
+    def _parse_thought_plan_response(self, response_text: str) -> tuple[str, List[Dict[str, Any]]]:
+        """Parse the LLM response expecting {'thought': ..., 'plan': [...]} JSON.
+           Extracts the JSON object, trying ```json first, then generic {}.
+        """
+        logger.debug(f"Attempting to parse thought/plan response (len={len(response_text)} chars)")
+        plan_json = None
         try:
-            # Extract JSON from response
-            content = response.get("response", "")
-            # Log the raw response for debugging
-            logger.debug(f"Raw response content: {content}")
-            
-            # Clean up the content
-            content = content.strip()
-            
-            # Try to parse the JSON directly
-            plan = json.loads(content)
-            
-            if isinstance(plan, list) and all(isinstance(step, dict) and "tool" in step for step in plan):
-                return plan
+            # Priority 1: Look for ```json ... ``` block
+            json_block_match = re.search(r"```json\s*(\{.*?\})\s*```", response_text, re.DOTALL)
+            if json_block_match:
+                plan_json = json_block_match.group(1).strip()
+                logger.debug("Extracted JSON using ```json block.")
             else:
-                raise ValueError("Invalid plan format")
-        except Exception as e:
-            logger.error(f"Failed to parse plan response: {e}")
-            raise
+                # Priority 2: Look for the first generic { ... } block
+                generic_match = re.search(r"\{\s*.*?\s*\}", response_text, re.DOTALL)
+                if generic_match:
+                    plan_json = generic_match.group(0).strip()
+                    logger.debug("Extracted JSON using generic {.*?} block.")
+                else:
+                     raise ValueError("No JSON object found in response text using ```json or {.*?} patterns.")
+
+            logger.debug(f"Extracted JSON string: {plan_json[:500]}...")
+            parsed_data = json.loads(plan_json)
+            
+            thought = parsed_data.get("thought", "") 
+            plan_steps = parsed_data.get("plan", []) 
+
+            if not isinstance(plan_steps, list):
+                raise ValueError("The 'plan' field must contain a list of steps")
+            
+            # Basic validation of steps (can be enhanced later)
+            valid_steps = []
+            for step in plan_steps:
+                if isinstance(step, dict) and "tool" in step:
+                    valid_steps.append({
+                        "tool": step.get("tool"),
+                        "input": step.get("input", {})
+                    })
+                else:
+                    logger.warning(f"Skipping invalid step format in plan: {step}")
+            
+            # --- Fix Misleading Log --- 
+            logger.info(f"Successfully parsed thought and {len(valid_steps)} plan steps.") # Moved inside try
+            return thought, valid_steps
+
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.error(f"Failed to parse thought/plan JSON: {e}", exc_info=True)
+            # Log the specific JSON string that failed parsing, if found
+            if plan_json:
+                 logger.error(f"JSON string that failed parsing: {plan_json}")
+            else:
+                 logger.error(f"Full response text was: {response_text}")
+            return "", [] 
+    # --- End new parsing method ---
 
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
-        """Generate a response based on task execution results."""
+        # ... (This method likely needs updating later too, but focus on generate_plan now) ...
         prompt = f"""Task: {task}
-Plan execution results:
+ReAct History:
 {json.dumps(plan, indent=2)}
 
 Context:
@@ -343,23 +413,39 @@ Please provide a summary of the task execution results.
     ) -> AsyncIterator[str]:
         """Generate a streaming response from the model."""
         if not self._enable_streaming:
+            # If streaming disabled, call regular generate and yield result
             response = await self.generate(prompt, stop, **kwargs)
             yield response
             return
 
         try:
+            # Base data for streaming
             data = {
                 "model": self.config.model_name,
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": self.config.temperature,
-                "max_tokens": self.config.max_tokens,
-                "top_p": self.config.top_p,
-                "top_k": self.config.top_k,
-                "repetition_penalty": self.config.repetition_penalty,
-                "stop": [stop] if stop else None,
-                "stream": True
+                "temperature": kwargs.get('temperature', self.config.temperature),
+                "max_tokens": kwargs.get('max_tokens', self.config.max_tokens),
+                "top_p": kwargs.get('top_p', self.config.top_p),
+                "stop": [stop] if stop else kwargs.get('stop'),
+                "stream": True # Crucial for streaming endpoint
             }
+
+            # Handle nvext parameters for streaming
+            nvext_params = {}
+            top_k_val = kwargs.get('top_k', self.config.top_k)
+            if top_k_val is not None:
+                nvext_params["top_k"] = top_k_val
             
+            rep_penalty_val = kwargs.get('repetition_penalty', self.config.repetition_penalty)
+            if rep_penalty_val is not None:
+                nvext_params["repetition_penalty"] = rep_penalty_val
+
+            if nvext_params:
+                data["nvext"] = nvext_params
+
+            # Filter out None values
+            data = {k: v for k, v in data.items() if v is not None}
+
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.config.api_base}/v1/chat/completions",

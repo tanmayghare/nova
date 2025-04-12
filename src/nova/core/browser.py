@@ -36,15 +36,30 @@ class Browser:
             logger.warning("Browser already started")
             return
             
-        playwright = await async_playwright().start()
-        self._browser = await playwright.chromium.launch(
-            headless=self.config.headless,
-            args=self.config.browser_args
-        )
-        self._page = await self._browser.new_page()
-        if self.config.viewport:
-            await self._page.set_viewport_size(self.config.viewport)
-        self._last_used = datetime.now()
+        logger.info("Starting Playwright...")
+        try:
+            playwright = await async_playwright().start()
+            logger.info("Launching browser instance...")
+            self._browser = await playwright.chromium.launch(
+                headless=self.config.headless,
+                args=self.config.browser_args
+            )
+            logger.info("Browser launched. Creating new page...")
+            self._page = await self._browser.new_page()
+            logger.info("Page created.")
+            if self.config.viewport:
+                logger.debug(f"Setting viewport to: {self.config.viewport}")
+                await self._page.set_viewport_size(self.config.viewport)
+            self._last_used = datetime.now()
+            logger.info("Browser startup complete.")
+        except Exception as e:
+            logger.error(f"Browser startup failed: {e}", exc_info=True)
+            # Attempt cleanup if possible
+            if self._browser:
+                await self._browser.close()
+                self._browser = None
+                self._page = None
+            raise # Re-raise exception after logging and cleanup attempt
         
     async def stop(self) -> None:
         """Stop the browser instance."""
@@ -61,6 +76,7 @@ class Browser:
             url: The URL to navigate to
         """
         if not self._page:
+            logger.error("Cannot navigate: Browser not started or page not available.")
             raise RuntimeError("Browser not started")
             
         # Ensure URL is properly formatted
@@ -69,8 +85,20 @@ class Browser:
         if not url.startswith(("http://", "https://")):
             url = f"https://{url}"
             
-        await self._page.goto(url)
-        self._last_used = datetime.now()
+        logger.info(f"Navigating to URL: {url}")
+        try:
+            logger.debug(f"Calling page.goto('{url}') with default wait/timeout...")
+            # Use default wait_until and timeout
+            await self._page.goto(url) 
+            # --- Add log IMMEDIATELY after await --- 
+            logger.debug(f"*** page.goto call HAS RETURNED for {url} ***")
+            # --- End Add log ---
+            self._last_used = datetime.now()
+            logger.info(f"Navigation to {url} successful.")
+        except Exception as e:
+            logger.error(f"Navigation to {url} failed: {e}", exc_info=True)
+            self._last_used = datetime.now() 
+            raise 
         
     async def click(self, selector: str) -> None:
         """Click an element matching the selector.

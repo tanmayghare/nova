@@ -93,4 +93,9 @@ class AgentConfig(BaseModel):
     max_failures: int = 3
     retry_delay: int = 5
     use_vision: bool = True
-    enable_memory: bool = True 
+    enable_memory: bool = True
+    max_iterations: int = 10
+    max_history_context_iterations: int = 5
+
+    class Config:
+        extra = "allow" 

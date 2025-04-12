@@ -1,7 +1,6 @@
 """Tests for NVIDIA NIM provider integration."""
 
 import pytest
-import asyncio
 import os
 from unittest.mock import AsyncMock, patch
 from nova.core.nim_provider import NIMProvider

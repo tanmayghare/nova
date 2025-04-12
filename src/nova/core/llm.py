@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import asyncio
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Protocol
 from urllib.parse import urlparse, urlunparse
 
@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 class LanguageModel(Protocol):
     """Protocol for language models."""
     
-    async def generate_plan(self, task: str, context: str) -> List[Dict[str, Any]]:
-        """Generate a plan for executing a task."""
+    async def generate_plan(self, task: str, context: str) -> tuple[str, List[Dict[str, Any]]]:
+        """Generate a plan (including thought) for executing a task."""
         ...
     
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
@@ -38,138 +38,175 @@ class LangChainAdapter:
         """Initialize with a LangChain model."""
         self.model = model
     
-    async def generate_plan(self, task: str, context: str) -> List[Dict[str, Any]]:
-        """Generate a plan for executing a task.
+    async def generate_plan(self, task: str, context: str) -> tuple[str, List[Dict[str, Any]]]:
+        """Generate a plan for executing a task, including the thought process.
         
         Args:
             task: The task description
             context: Additional context for the task
             
         Returns:
-            List of steps to execute the task
+            A tuple containing the thought (str) and the list of steps (List[Dict]).
         """
-        prompt = f"""You are Nova, an intelligent browser automation agent. Generate a plan to accomplish this task:
+        prompt = f"""You are Nova, an intelligent browser automation agent designed to accomplish tasks by interacting with web pages using available tools.
+
+Your goal is to generate a plan to accomplish the given task based on the current context, **including the structure of the current web page**. Follow the Thought-Action format:
+
+1.  **Thought:** Briefly explain your reasoning process. 
+    - Analyze the `Initial Task Context` and `Recent Execution History`.
+    - **Critically examine the `Current Page Structure (After Previous Action)` JSON.** 
+    - Note the outcome (`observation`) of the last step in the history, including any errors or the path to a `screenshot` taken after the action.
+    - Determine the single best next step towards the `Task` goal based *primarily* on the current page structure and history.
+    - If the goal is achieved according to the history and current page state, explain why and use the 'finish' tool.
+2.  **Action:** Generate the plan as a JSON array containing the **single next step** (a tool call or the 'finish' action).
 
 Task: {task}
 
-Context: {context}
+Context:
+```
+{context}
+```
+
+*Note: The context above includes initial context, the current page structure **captured after the previous action completed**, and recent history. Each history entry includes 'thought', 'action', and 'observation'. The observation contains the action's 'status', 'result' or 'error', and potentially a 'screenshot' file path.* 
 
 Available tools:
-- navigate: Navigate to a URL (input: url)
-- click: Click an element matching a selector (input: selector)
-- type: Type text into an element (input: selector, text)
-- wait: Wait for an element to appear (input: selector, timeout)
-- screenshot: Take a screenshot of the current page (input: path)
+- navigate: Navigate to a URL (input: {{'url': '...'}})
+- click: Click an element matching a selector (input: {{'selector': '...'}})
+- type: Type text into an element (input: {{'selector': '...', 'text': '...'}})
+- wait: Wait for an element to appear (input: {{'selector': '...', 'timeout': ...}})
+- screenshot: Take a screenshot (input: {{'path': '...'}})
+- finish: Use this tool **only** when the task goal is fully achieved. (input: {{'reason': '...'}} - Optional reason for completion)
+# Add other tools dynamically if needed
 
-Generate a detailed plan with specific steps. Each step should use one of the available tools.
-For each step, specify the tool name and its required input parameters.
+Output Format:
+Your final output **must** be a valid JSON object containing two keys: 'thought' and 'plan'.
+The 'thought' value should be a string containing your reasoning.
+The 'plan' value should be a JSON array containing **exactly one** step object (either a tool action or the 'finish' action).
 
-IMPORTANT: The plan must be a valid JSON array or object with a 'steps' field containing an array.
-Each step must include the tool name and its input parameters.
+Example (Action Step):
+```json
+{{
+  "thought": "The task is to click the login button. Looking at the `Current Page Structure (After Previous Action)`, I see a button with `text: 'Login'` and `attributes: {{'id': 'login-btn'}}`. I will use the click tool with the selector '#login-btn'.",
+  "plan": [
+    {{\"tool\": \"click\", \"input\": {{\"selector\": \"#login-btn\"}}}}
+  ]
+}}
+```
 
-Example formats:
-[
-    {"tool": "navigate", "input": {"url": "https://example.com"}},
-    {"tool": "click", "input": {"selector": "#submit-button"}},
-    {"tool": "screenshot", "input": {"path": "result.png"}}
-]
+Example (Finish Step):
+```json
+{{
+  "thought": "The user asked for the page title, and the context shows the title is 'Example Domain'. The task is complete.",
+  "plan": [
+    {{\"tool\": \"finish\", \"input\": {{\"reason\": \"Found the page title as requested.\"}}}}
+  ]
+}}
+```
 
-OR
-
-{
-    "steps": [
-        {"tool": "navigate", "input": {"url": "https://example.com"}},
-        {"tool": "click", "input": {"selector": "#submit-button"}},
-        {"tool": "screenshot", "input": {"path": "result.png"}}
-    ]
-}
-
-Generate the plan:"""
+Generate the thought and the single next step (or finish action) for the task:"""
 
         try:
             response = await self.model.ainvoke(prompt)
             response_text = response.content if hasattr(response, 'content') else str(response)
             
-            # Extract JSON from response
+            # Extract JSON object from response
             try:
-                # Find JSON content (array or object)
-                json_match = re.search(r'(\{.*\}|\[.*\])', response_text, re.DOTALL)
+                # Find JSON object content
+                json_match = re.search(r'\\{.*\\}', response_text, re.DOTALL)
                 if not json_match:
-                    raise ValueError("No JSON content found in response")
-                
+                     raise ValueError("No JSON object found in response") 
+
                 plan_json = json_match.group(0)
-                plan_data = json.loads(plan_json)
+                # Improve robustness: handle potential markdown backticks around JSON
+                if plan_json.startswith('```json'):
+                    plan_json = plan_json[7:]
+                if plan_json.endswith('```'):
+                    plan_json = plan_json[:-3]
+                plan_json = plan_json.strip()
                 
-                # Handle both array and object formats
-                steps = plan_data if isinstance(plan_data, list) else plan_data.get("steps", [])
-                if not isinstance(steps, list):
-                    raise ValueError("Plan must be a list of steps or an object with a 'steps' array")
+                parsed_data = json.loads(plan_json)
                 
-                # Normalize and validate each step
+                # Extract thought and plan from the parsed JSON object
+                if isinstance(parsed_data, dict):
+                    thought = parsed_data.get("thought", "") 
+                    plan_steps = parsed_data.get("plan", []) 
+                else:
+                    raise ValueError("Parsed JSON is not a dictionary (expected object with 'thought' and 'plan' keys)")
+
+                if not isinstance(plan_steps, list):
+                    raise ValueError("The 'plan' field must contain a list of steps")
+                
+                # Normalize and validate steps (no major change needed here for finish tool)
                 normalized_steps = []
-                for step in steps:
+                for step in plan_steps:
                     if not isinstance(step, dict):
+                        logger.warning(f"Skipping invalid step format: {step}")
                         continue
                         
-                    # Extract tool and input information
                     tool_name = step.get("tool")
-                    if not tool_name:
-                        # Try to extract from action if present
-                        action = step.get("action", {})
-                        if isinstance(action, dict):
-                            tool_name = action.get("type")
-                    
-                    # Get input parameters
                     input_params = step.get("input", {})
-                    if not input_params and isinstance(step.get("action"), dict):
-                        input_params = {k: v for k, v in step["action"].items() if k != "type"}
+
+                    if not tool_name:
+                         logger.warning(f"Skipping step missing 'tool' key: {step}")
+                         continue 
                     
-                    if tool_name and isinstance(input_params, dict):
-                        normalized_step = {
-                            "type": "tool",
-                            "tool": tool_name,
-                            "input": input_params
-                        }
-                        normalized_steps.append(normalized_step)
+                    if not isinstance(input_params, dict):
+                         # Allow non-dict input for finish if needed, but generally expect dict
+                         if tool_name != "finish":
+                             logger.warning(f"Input for tool '{tool_name}' is not a dictionary: {input_params}. Using empty input.")
+                             input_params = {} 
+                         elif input_params is None: # Allow null input for finish
+                              input_params = {}
+                         elif not isinstance(input_params, dict): # Treat other non-dicts as error for finish? Or empty?
+                              logger.warning(f"Non-dict input for finish tool: {input_params}. Using empty input.")
+                              input_params = {}
+
+                    normalized_step = {
+                        "tool": tool_name,
+                        "input": input_params
+                    }
+                    normalized_steps.append(normalized_step)
                 
-                if not normalized_steps:
-                    raise ValueError("No valid steps found in plan")
+                # Return both thought and the potentially empty list of valid steps
+                # The agent loop will handle the case where normalized_steps[0]['tool'] == 'finish'
+                return thought, normalized_steps 
                 
-                return normalized_steps
-                
-            except Exception as e:
-                logger.error(f"Failed to parse plan JSON: {e}", exc_info=True)
-                logger.error(f"Raw response: {response_text}")
-                raise RuntimeError(f"Failed to generate valid plan: {str(e)}")
-            
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(f"Failed to parse LLM response JSON: {e}", exc_info=True)
+                logger.error(f"Raw response potentially causing error: {response_text}")
+                return "", [] 
+
         except Exception as e:
             logger.error(f"Plan generation failed: {e}", exc_info=True)
-            raise
+            return "", [] 
     
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
-        """Generate a response based on task execution results.
+        """Generate a response based on task execution results (ReAct history).
         
         Args:
-            task: The original task
-            plan: The executed plan with results
-            context: Additional context
+            task: The original task description
+            plan: The full ReAct action history (list of thought/action/observation dicts)
+            context: The final context string used before generating this response (optional context)
             
         Returns:
-            Generated response summarizing the results
+            Generated response summarizing the execution
         """
-        prompt = f"""You are Nova, an intelligent browser automation agent. Generate a response for this completed task:
+        # Use the action_history (passed as 'plan') as the primary source
+        history_json = json.dumps(plan, indent=2) 
+        
+        prompt = f"""You are Nova, an intelligent browser automation agent. The following task was attempted:
 
 Task: {task}
 
-Context: {context}
+The execution involved the following sequence of thoughts, actions, and observations (ReAct History):
+```json
+{history_json}
+```
 
-Executed Plan:
-{json.dumps(plan, indent=2)}
-
-Generate a natural language response that:
-1. Summarizes what was done
-2. Explains any errors or issues encountered
-3. Provides the final result or outcome
+Generate a concise natural language response for the user that:
+1. Summarizes the key actions taken based on the history.
+2. Mentions any significant errors encountered during execution (from observations).
+3. States the final outcome or result (if discernible from the history or cumulative results).
 
 Response:"""
 
@@ -178,7 +215,7 @@ Response:"""
             return response.content if hasattr(response, 'content') else str(response)
         except Exception as e:
             logger.error(f"Response generation failed: {e}", exc_info=True)
-            raise
+            raise # Re-raise for now, agent might handle it
 
 
 class StepParameters(BaseModel):
@@ -347,14 +384,36 @@ class LLM:
         self._last_response = response
         return response
     
-    async def generate_plan(self, task: str, context: str) -> List[Dict[str, Any]]:
-        """Generate a plan for executing a task."""
-        plan = await self._provider.generate_plan(task, context)
-        self._last_response = plan
-        return plan
+    async def generate_plan(self, task: str, context: str) -> tuple[str, List[Dict[str, Any]]]:
+        """Generate a plan (including thought) for executing a task."""
+        # Ensure the provider method signature matches if it exists
+        # If _provider implements generate_plan directly, it needs updating too.
+        # Assuming it uses the LangChainAdapter or similar logic internally or 
+        # the call adapts. If not, the specific provider code needs changing.
+        if hasattr(self._provider, 'generate_plan') and asyncio.iscoroutinefunction(self._provider.generate_plan):
+             thought, plan = await self._provider.generate_plan(task, context)
+        else:
+             # Fallback or error if provider doesn't support this signature
+             # This might require adjustment based on specific provider implementations
+             # For now, assume LangChainAdapter handles it or similar logic applies
+             logger.warning(f"Provider {self.provider} might not directly support returning thought. Attempting generation.")
+             # Simulate the call if direct method is missing (adapt as needed)
+             # This part is speculative and depends on the provider's design
+             # You might need to instantiate LangChainAdapter here if self._provider is just the raw model
+             if isinstance(self._provider, BaseChatModel): # Example check
+                 adapter = LangChainAdapter(self._provider)
+                 thought, plan = await adapter.generate_plan(task, context)
+             else:
+                 # Default to empty if provider cannot generate thought/plan tuple
+                 logger.error(f"Provider {self.provider} does not implement the required generate_plan returning (thought, plan).")
+                 thought, plan = "", []
+
+        self._last_response = {"thought": thought, "plan": plan} # Store both
+        return thought, plan
     
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
         """Generate a response based on task execution results."""
+        # This method likely needs updating later to handle the ReAct history better
         response = await self._provider.generate_response(task, plan, context)
         self._last_response = response
         return response

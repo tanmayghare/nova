@@ -11,7 +11,6 @@ import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from cachetools import TTLCache, LRUCache
 
-from llama_cpp import Llama  # type: ignore
 from .monitoring import PerformanceMonitor
 from .language_model import LanguageModel
 from pydantic import BaseModel, Field
