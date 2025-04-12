@@ -214,13 +214,17 @@ class Agent:
                         if not isinstance(step, dict):
                             raise ValueError(f"Invalid step format: {type(step)}")
                         
-                        if "type" not in step or step["type"] != "tool":
-                            raise ValueError(f"Invalid step type: {step.get('type', 'missing')}")
-                        
-                        # Execute tool
+                        # Extract tool and input, handle missing keys
+                        tool_name = step.get("tool")
+                        tool_input = step.get("input", {}) # Default to empty dict if input is missing
+
+                        if not tool_name:
+                            raise ValueError("Step missing 'tool' key")
+
+                        # Execute tool using the extracted name and input
                         result = await self.tool_registry.execute_tool(
-                            step["tool"],
-                            step["input"]
+                            tool_name,
+                            tool_input
                         )
                         
                         # Store result in memory
@@ -228,9 +232,9 @@ class Agent:
                         results.append(result)
                         
                     except Exception as e:
-                        error_msg = f"Step execution failed: {str(e)}"
-                        logger.error(error_msg)
-                        await self.memory.add(task_id, step, {"error": error_msg})
+                        # Use safer logging to avoid URL formatting issues
+                        logger.error("Step execution failed", exc_info=True)
+                        await self.memory.add(task_id, step, {"error": str(e)})
                         raise
                 
                 return {
@@ -239,11 +243,11 @@ class Agent:
                 }
                 
             except Exception as e:
-                error_msg = f"Task execution failed: {str(e)}"
-                logger.error(error_msg)
+                # Use safer logging without f-string to avoid formatting errors with URLs
+                logger.error("Task execution failed", exc_info=True)
                 return {
                     "status": "failed",
-                    "error": error_msg
+                    "error": str(e)
                 }
 
     async def _execute_browser_action(self, browser: Browser, action: Dict[str, Any]) -> Any:
@@ -263,7 +267,7 @@ class Agent:
             else:
                 raise ValueError(f"Unknown browser action type: {action_type}")
         except Exception as e:
-            logger.error(f"Browser action failed: {e}", exc_info=True)
+            logger.error("Browser action failed", exc_info=True)
             raise
 
     async def _execute_tool_action(self, action: Dict[str, Any]) -> Any:
@@ -292,7 +296,7 @@ class Agent:
             return await tool.execute(action)
             
         except Exception as e:
-            logger.error(f"Tool action failed: {e}", exc_info=True)
+            logger.error("Tool action failed", exc_info=True)
             raise
 
     async def cleanup(self) -> None:
@@ -301,7 +305,7 @@ class Agent:
             if self.browser_pool:
                 await self.browser_pool.cleanup()
         except Exception as e:
-            logger.error(f"Browser pool cleanup failed: {e}", exc_info=True)
+            logger.error("Browser pool cleanup failed", exc_info=True)
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Get current performance metrics.

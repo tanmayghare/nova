@@ -11,14 +11,37 @@ import re
 logger = logging.getLogger(__name__)
 
 def format_url(url: str) -> str:
-    """Format URL to ensure consistency."""
+    """Format URL to ensure consistency.
+    
+    This function handles various edge cases:
+    - Removing extra whitespace
+    - Removing quotes (both inside and outside the URL)
+    - Removing markdown formatting characters
+    - Adding a scheme (https://) if missing
+    """
     try:
+        # Convert to string if not already
+        url = str(url)
+        
+        # Remove any extra whitespace, quotes, or markdown characters
+        url = url.strip().strip('"`\'')
+        
+        # If there are still quotes inside the URL (e.g., "example.com"), remove them
+        if url.startswith('"') and url.endswith('"'):
+            url = url[1:-1]
+        if url.startswith("'") and url.endswith("'"):
+            url = url[1:-1]
+            
+        # Parse and ensure the URL has a scheme
         parsed = urlparse(url)
         if not parsed.scheme:
             parsed = urlparse(f"https://{url}")
+            
+        # Return the fully formatted URL
         return urlunparse(parsed)
     except Exception as e:
-        logger.error(f"Error formatting URL {url}: {str(e)}")
+        logger.error(f"Error formatting URL: {e}", exc_info=True)
+        # Return the original URL as fallback
         return url
 
 class Task:
@@ -48,7 +71,7 @@ class Task:
             # Format URLs in the task description
             formatted_description = re.sub(
                 r'https?://\S+',
-                lambda m: format_url(m.group(0)),
+                lambda m: format_url(m.group(0).strip('"\'')),
                 self.description
             )
 
@@ -92,8 +115,8 @@ class Task:
                         raise TaskExecutionError(f"Step {i + 1} failed: {step_result.get('error')}")
                         
                 except Exception as e:
-                    error_msg = f"Step {i + 1} execution failed: {str(e)}"
-                    logger.error(error_msg)
+                    error_msg = f"Step {i + 1} execution failed"
+                    logger.error(error_msg, exc_info=True)
                     raise TaskExecutionError(error_msg)
 
             # Update task status
@@ -107,9 +130,11 @@ class Task:
             return self._to_dict()
 
         except Exception as e:
-            error_msg = f"Task execution failed: {str(e)}"
-            logger.error(error_msg)
+            # Use exc_info=True to let the logger handle exception formatting safely
+            # This will include the traceback and prevent nested formatting errors
+            logger.error("Task execution failed", exc_info=True)
             self.status = "failed"
+            # Store the original error string representation for the task record
             self.error = str(e)
             return self._to_dict()
 
@@ -173,7 +198,7 @@ class Task:
                 raise ValueError(f"Unsupported action: {action}")
 
         except Exception as e:
-            logger.error(f"Step execution failed: {str(e)}")
+            logger.error("Step execution failed", exc_info=True)
             return {
                 "action": action if 'action' in locals() else "unknown",
                 "status": "error",
