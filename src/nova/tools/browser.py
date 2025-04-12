@@ -41,7 +41,16 @@ class NavigateTool(BrowserActionTool):
             if not url:
                 return ToolResult(False, None, "URL is required")
             
-            # Ensure URL is properly formatted
+            # Robust URL formatting
+            # 1. Convert to string in case it's not
+            # 2. Handle quotes inside and outside the URL
+            # 3. Handle common LLM artifacts like markdown formatting
+            url = str(url)
+            url = url.strip().strip('"\'')
+            # Remove any markdown backticks
+            url = url.strip('`')
+            
+            # Check if URL has proper scheme, add https:// if not
             if not url.startswith(("http://", "https://")):
                 url = f"https://{url}"
             
