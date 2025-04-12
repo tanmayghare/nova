@@ -60,7 +60,7 @@ class NovaApiTest:
         try:
             data = {
                 "task": task,
-                "model": "llama3.2:3b-instruct-q8_0",
+                "model": "mistral-small3.1:24b-instruct-2503-q4_K_M",
                 "headless": True
             }
             response = await self.client.post("/api/tasks", json=data)

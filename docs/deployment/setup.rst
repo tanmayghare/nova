@@ -25,7 +25,7 @@ After installation, pull the required model:
 
 .. code-block:: bash
 
-   ollama pull llama3.2:3b-instruct-q8_0
+   ollama pull mistral-small3.1:24b-instruct-2503-q4_K_M
 
 Installing Nova
 --------------

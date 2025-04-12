@@ -22,7 +22,7 @@ def format_url(url: str) -> str:
         return url
 
 class Task:
-    def __init__(self, task_id: str, description: str, model: str = "llama3.2:3b-instruct-q8_0", headless: bool = False):
+    def __init__(self, task_id: str, description: str, model: str = "mistral-small3.1:24b-instruct-2503-q4_K_M", headless: bool = False):
         self.task_id = task_id
         self.description = description
         self.model = model

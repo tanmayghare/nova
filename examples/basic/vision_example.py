@@ -68,4 +68,4 @@ if __name__ == "__main__":
     test_url_image()
 
     # Initialize llama model
-    model = LlamaModel(model_name="llama3.2:3b-instruct-q8_0") 
+    model = LlamaModel(model_name="mistral-small3.1:24b-instruct-2503-q4_K_M") 

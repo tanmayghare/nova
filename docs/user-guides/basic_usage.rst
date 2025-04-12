@@ -16,7 +16,7 @@ Here's a basic example of how to use Nova:
    load_dotenv()
 
    # Initialize the language model
-   model = LlamaModel(model_name="llama3.2:3b-instruct-q8_0")
+   model = LlamaModel(model_name="mistral-small3.1:24b-instruct-2503-q4_K_M")
 
    # Create an agent
    agent = Agent(

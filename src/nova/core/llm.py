@@ -294,7 +294,7 @@ class LLM:
     
     def __init__(
         self,
-        model_name: str = "llama3.2:3b-instruct-q8_0",
+        model_name: str = "mistral-small3.1:24b-instruct-2503-q4_K_M",
         batch_size: int = 4,
         enable_streaming: bool = True,
     ) -> None:

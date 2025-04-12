@@ -84,23 +84,23 @@ Important: Return ONLY the JSON object, no other text or explanation."""
 class LlamaConfig(BaseModel):
     """Configuration for Llama model."""
     model_name: str = Field(
-        default="llama3.2:3b-instruct-q8_0",
+        default="mistral-small3.1:24b-instruct-2503-q4_K_M",
         description="Name of the Ollama model to use"
     )
     temperature: float = Field(
-        default=0.1,
+        default=0.2,
         description="Temperature for sampling"
     )
     max_tokens: int = Field(
-        default=2048,
+        default=4096,
         description="Maximum number of tokens to generate"
     )
     top_p: float = Field(
-        default=0.95,
+        default=0.9,
         description="Top-p sampling parameter"
     )
     top_k: int = Field(
-        default=40,
+        default=50,
         description="Top-k sampling parameter"
     )
     repeat_penalty: float = Field(
@@ -133,7 +133,7 @@ class LlamaModel(LanguageModel):
 
     def __init__(
         self,
-        model_name: str = "llama3.2:3b-instruct-q8_0",
+        model_name: str = "mistral-small3.1:24b-instruct-2503-q4_K_M",
         temperature: float = 0.1,
         max_tokens: int = 2048,
         top_p: float = 0.95,
@@ -292,7 +292,7 @@ class LlamaModel(LanguageModel):
     def _get_default_models() -> List[str]:
         """Get default list of models."""
         return [
-            "llama3.2:3b-instruct-q8_0",
+            "mistral-small3.1:24b-instruct-2503-q4_K_M",
             "llama3.2:8b-instruct-q6_K",
             "llama3.1:70b-instruct-q4_K_M"
         ]

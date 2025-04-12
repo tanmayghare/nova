@@ -23,7 +23,7 @@ class ExampleTool(Tool):
 
 async def main() -> None:
     # Initialize components
-    model = LlamaModel(model_name="llama3.2:3b-instruct-q8_0")
+    model = LlamaModel(model_name="mistral-small3.1:24b-instruct-2503-q4_K_M")
     llm = LLM(model, model_type="llama")
     memory = Memory()
     tools: Sequence[Tool] = [ExampleTool()]

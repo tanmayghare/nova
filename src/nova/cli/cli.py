@@ -58,7 +58,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--model",
-        default="llama3.2:3b-instruct-q8_0",
+        default="mistral-small3.1:24b-instruct-2503-q4_K_M",
         help="LLM model to use for the agent"
     )
     run_parser.add_argument(
@@ -73,7 +73,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     interactive_parser.add_argument(
         "--model",
-        default="llama3.2:3b-instruct-q8_0",
+        default="mistral-small3.1:24b-instruct-2503-q4_K_M",
         help="LLM model to use for the agent"
     )
     

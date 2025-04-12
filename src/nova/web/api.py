@@ -28,7 +28,7 @@ class TaskRequest(BaseModel):
     """Model for task execution requests."""
 
     task: str = Field(..., description="Task description")
-    model: str = Field("llama3.2:3b-instruct-q8_0", description="LLM model to use")
+    model: str = Field("mistral-small3.1:24b-instruct-2503-q4_K_M", description="LLM model to use")
     headless: bool = Field(False, description="Run browser in headless mode")
 
 

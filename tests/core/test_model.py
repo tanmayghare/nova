@@ -13,7 +13,7 @@ def test_ollama():
             completion_response = requests.post(
                 "http://localhost:11434/api/generate",
                 json={
-                    "model": "llama3.2:3b-instruct-q8_0",
+                    "model": "mistral-small3.1:24b-instruct-2503-q4_K_M",
                     "prompt": "Hello, how are you?",
                     "stream": False
                 }

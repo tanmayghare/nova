@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class TaskRequest(BaseModel):
     task: str
-    model: Optional[str] = "llama3.2:3b-instruct-q8_0"
+    model: Optional[str] = "mistral-small3.1:24b-instruct-2503-q4_K_M"
     headless: Optional[bool] = False
 
 class TaskResponse(BaseModel):

@@ -31,7 +31,7 @@ playwright install chromium
 
 4. Install Ollama and pull the model:
 ```bash
-ollama pull llama3.2:3b-instruct-q8_0
+ollama pull mistral-small3.1:24b-instruct-2503-q4_K_M
 ```
 
 ## Usage
@@ -41,7 +41,7 @@ from nova.core.agent import Agent
 from nova.core.llama import LlamaModel
 
 # Initialize the agent
-model = LlamaModel(model_name="llama3.2:3b-instruct-q8_0")
+model = LlamaModel(model_name="mistral-small3.1:24b-instruct-2503-q4_K_M")
 agent = Agent(
     task="Navigate to example.com and click the first link",
     llm=model

@@ -43,7 +43,7 @@ async def main():
     # Initialize Llama model
     logger.info("Initializing Llama model")
     llama_model = LlamaModel(
-        model_name="llama3.2:3b-instruct-q8_0",
+        model_name="mistral-small3.1:24b-instruct-2503-q4_K_M",
         temperature=0.7,
         max_tokens=2048,
         top_p=0.95,

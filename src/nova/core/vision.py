@@ -10,7 +10,7 @@ from .llama import LlamaModel
 class VisionConfig(BaseModel):
     """Configuration for vision capabilities."""
     model_name: str = Field(
-        default="llama3.2:3b-instruct-q8_0",
+        default="mistral-small3.1:24b-instruct-2503-q4_K_M",
         description="Name of the Ollama model to use"
     )
     temperature: float = Field(
@@ -28,7 +28,7 @@ class VisionModel:
 
     def __init__(
         self,
-        model_name: str = "llama3.2:3b-instruct-q8_0",
+        model_name: str = "mistral-small3.1:24b-instruct-2503-q4_K_M",
         temperature: float = 0.7,
         max_tokens: int = 2048,
     ) -> None:
