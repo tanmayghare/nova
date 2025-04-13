@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["api"])
 
 # Task storage
-TASKS_FILE = "tasks.json"
+TASKS_FILE = os.path.join("outputs", "tasks.json")
 tasks: Dict[str, Dict[str, Any]] = {}
 active_agents: Dict[str, Agent] = {}
 
