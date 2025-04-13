@@ -38,19 +38,19 @@ class LangChainAdapter:
         """Initialize with a LangChain model."""
         self.model = model
     
-    async def generate_plan(self, task: str, context: str) -> tuple[str, List[Dict[str, Any]]]:
-        """Generate a plan for executing a task, including the thought process.
+    async def generate_plan(self, task: str, context: str) -> tuple[str, float, List[Dict[str, Any]]]:
+        """Generate a plan for executing a task, including the thought process and confidence score.
         
         Args:
             task: The task description
             context: Additional context for the task
             
         Returns:
-            A tuple containing the thought (str) and the list of steps (List[Dict]).
+            A tuple containing the thought (str), confidence (float), and the list of steps (List[Dict]).
         """
         prompt = f"""You are Nova, an intelligent browser automation agent designed to accomplish tasks by interacting with web pages using available tools.
 
-Your goal is to generate a plan to accomplish the given task based on the current context, **including the structure of the current web page**. Follow the Thought-Action format:
+Your goal is to generate a plan to accomplish the given task based on the current context, **including the structure of the current web page**. Follow the Thought-Action format, **including a confidence score for your proposed action**:
 
 1.  **Thought:** Briefly explain your reasoning process. 
     - Analyze the `Initial Task Context` and `Recent Execution History`.
@@ -58,7 +58,10 @@ Your goal is to generate a plan to accomplish the given task based on the curren
     - Note the outcome (`observation`) of the last step in the history, including any errors or the path to a `screenshot` taken after the action.
     - Determine the single best next step towards the `Task` goal based *primarily* on the current page structure and history.
     - If the goal is achieved according to the history and current page state, explain why and use the 'finish' tool.
-2.  **Action:** Generate the plan as a JSON array containing the **single next step** (a tool call or the 'finish' action).
+2.  **Confidence Score:** Provide a numerical score (0.0 to 1.0) indicating your confidence that the proposed action is correct and will succeed towards the goal. 
+    - Base confidence on: clarity of the goal, uniqueness/reliability of selectors (if applicable), consistency with history, likelihood of achieving the task objective with this step.
+    - Use lower scores if selectors are ambiguous, the action seems risky, or the goal is unclear.
+3.  **Action:** Generate the plan as a JSON array containing the **single next step** (a tool call or the 'finish' action).
 
 Task: {task}
 
@@ -66,8 +69,7 @@ Context:
 ```
 {context}
 ```
-
-*Note: The context above includes initial context, the current page structure **captured after the previous action completed**, and recent history. Each history entry includes 'thought', 'action', and 'observation'. The observation contains the action's 'status', 'result' or 'error', and potentially a 'screenshot' file path.* 
+*Note: The context above includes initial context, the current page structure captured after the previous action completed, and recent history. If the previous step had low confidence, the context might also include an 'Extended Context (Full HTML from Previous Step)' section.* 
 
 Available tools:
 - navigate: Navigate to a URL (input: {{'url': '...'}})
@@ -79,14 +81,13 @@ Available tools:
 # Add other tools dynamically if needed
 
 Output Format:
-Your final output **must** be a valid JSON object containing two keys: 'thought' and 'plan'.
-The 'thought' value should be a string containing your reasoning.
-The 'plan' value should be a JSON array containing **exactly one** step object (either a tool action or the 'finish' action).
+Your final output **must** be a valid JSON object containing three keys: 'thought' (string), 'confidence' (float between 0.0 and 1.0), and 'plan' (JSON array with one step).
 
 Example (Action Step):
 ```json
 {{
-  "thought": "The task is to click the login button. Looking at the `Current Page Structure (After Previous Action)`, I see a button with `text: 'Login'` and `attributes: {{'id': 'login-btn'}}`. I will use the click tool with the selector '#login-btn'.",
+  "thought": "The task is to click the login button. Looking at the `Current Page Structure (After Previous Action)`, I see a button with `text: 'Login'` and a unique `id: 'login-btn'`. This seems unambiguous.",
+  "confidence": 0.95,
   "plan": [
     {{\"tool\": \"click\", \"input\": {{\"selector\": \"#login-btn\"}}}}
   ]
@@ -97,41 +98,56 @@ Example (Finish Step):
 ```json
 {{
   "thought": "The user asked for the page title, and the context shows the title is 'Example Domain'. The task is complete.",
+  "confidence": 1.0,
   "plan": [
     {{\"tool\": \"finish\", \"input\": {{\"reason\": \"Found the page title as requested.\"}}}}
   ]
 }}
 ```
 
-Generate the thought and the single next step (or finish action) for the task:"""
+Generate the thought, confidence score, and the single next step (or finish action) for the task:"""
 
         try:
             response = await self.model.ainvoke(prompt)
             response_text = response.content if hasattr(response, 'content') else str(response)
             
             # Extract JSON object from response
+            plan_json = None
             try:
-                # Find JSON object content
-                json_match = re.search(r'\\{.*\\}', response_text, re.DOTALL)
-                if not json_match:
-                     raise ValueError("No JSON object found in response") 
+                # Priority 1: Look for ```json ... ``` block
+                json_block_match = re.search(r"```json\s*(\{.*?\})\s*```", response_text, re.DOTALL)
+                if json_block_match:
+                    plan_json = json_block_match.group(1).strip()
+                    logger.debug("Extracted JSON using ```json block.")
+                else:
+                    # Priority 2: Look for the first generic { ... } block
+                    generic_match = re.search(r"\{\s*.*?\s*\}", response_text, re.DOTALL)
+                    if generic_match:
+                        plan_json = generic_match.group(0).strip()
+                        logger.debug("Extracted JSON using generic {.*?} block.")
+                    else:
+                         raise ValueError("No JSON object found in response text using ```json or {.*?} patterns.")
 
-                plan_json = json_match.group(0)
-                # Improve robustness: handle potential markdown backticks around JSON
-                if plan_json.startswith('```json'):
-                    plan_json = plan_json[7:]
-                if plan_json.endswith('```'):
-                    plan_json = plan_json[:-3]
-                plan_json = plan_json.strip()
-                
+                logger.debug(f"Extracted JSON string: {plan_json[:500]}...")
                 parsed_data = json.loads(plan_json)
                 
-                # Extract thought and plan from the parsed JSON object
-                if isinstance(parsed_data, dict):
-                    thought = parsed_data.get("thought", "") 
-                    plan_steps = parsed_data.get("plan", []) 
-                else:
-                    raise ValueError("Parsed JSON is not a dictionary (expected object with 'thought' and 'plan' keys)")
+                if not isinstance(parsed_data, dict):
+                    raise ValueError("Parsed JSON is not a dictionary")
+
+                # Extract thought, confidence, and plan
+                thought = parsed_data.get("thought", "") 
+                plan_steps = parsed_data.get("plan", []) 
+                confidence = 0.0 # Default confidence
+                raw_confidence = parsed_data.get("confidence")
+                if isinstance(raw_confidence, (float, int)):
+                    confidence = max(0.0, min(1.0, float(raw_confidence)))
+                elif isinstance(raw_confidence, str):
+                    try:
+                        confidence = max(0.0, min(1.0, float(raw_confidence)))
+                    except ValueError:
+                        logger.warning(f"Could not parse confidence score string: '{raw_confidence}'. Defaulting to 0.0.")
+                elif raw_confidence is not None:
+                     logger.warning(f"Unexpected type for confidence score: {type(raw_confidence)}. Defaulting to 0.0.")
 
                 if not isinstance(plan_steps, list):
                     raise ValueError("The 'plan' field must contain a list of steps")
@@ -167,18 +183,23 @@ Generate the thought and the single next step (or finish action) for the task:""
                     }
                     normalized_steps.append(normalized_step)
                 
-                # Return both thought and the potentially empty list of valid steps
-                # The agent loop will handle the case where normalized_steps[0]['tool'] == 'finish'
-                return thought, normalized_steps 
+                logger.info(f"Successfully parsed thought, confidence={confidence:.2f}, and {len(normalized_steps)} plan steps.")
+                # Return the 3-tuple
+                return thought, confidence, normalized_steps 
                 
-            except (json.JSONDecodeError, ValueError) as e:
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
                 logger.error(f"Failed to parse LLM response JSON: {e}", exc_info=True)
-                logger.error(f"Raw response potentially causing error: {response_text}")
-                return "", [] 
+                if plan_json:
+                     logger.error(f"JSON string that failed parsing: {plan_json}")
+                else:
+                     logger.error(f"Raw response potentially causing error: {response_text}")
+                # Return empty thought, 0.0 confidence, empty plan on failure
+                return "", 0.0, [] 
 
         except Exception as e:
             logger.error(f"Plan generation failed: {e}", exc_info=True)
-            return "", [] 
+            # Return empty on LLM communication failure
+            return "", 0.0, [] 
     
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
         """Generate a response based on task execution results (ReAct history).
@@ -384,32 +405,32 @@ class LLM:
         self._last_response = response
         return response
     
-    async def generate_plan(self, task: str, context: str) -> tuple[str, List[Dict[str, Any]]]:
-        """Generate a plan (including thought) for executing a task."""
+    async def generate_plan(self, task: str, context: str) -> tuple[str, float, List[Dict[str, Any]]]:
+        """Generate a plan (including thought and confidence) for executing a task."""
         # Ensure the provider method signature matches if it exists
         # If _provider implements generate_plan directly, it needs updating too.
-        # Assuming it uses the LangChainAdapter or similar logic internally or 
+        # Assuming it uses the LangChainAdapter or NIMProvider logic internally or 
         # the call adapts. If not, the specific provider code needs changing.
         if hasattr(self._provider, 'generate_plan') and asyncio.iscoroutinefunction(self._provider.generate_plan):
-             thought, plan = await self._provider.generate_plan(task, context)
+             thought, confidence, plan = await self._provider.generate_plan(task, context)
         else:
              # Fallback or error if provider doesn't support this signature
              # This might require adjustment based on specific provider implementations
              # For now, assume LangChainAdapter handles it or similar logic applies
-             logger.warning(f"Provider {self.provider} might not directly support returning thought. Attempting generation.")
+             logger.warning(f"Provider {self.provider} might not directly support returning thought/confidence. Attempting generation.")
              # Simulate the call if direct method is missing (adapt as needed)
              # This part is speculative and depends on the provider's design
              # You might need to instantiate LangChainAdapter here if self._provider is just the raw model
              if isinstance(self._provider, BaseChatModel): # Example check
                  adapter = LangChainAdapter(self._provider)
-                 thought, plan = await adapter.generate_plan(task, context)
+                 thought, confidence, plan = await adapter.generate_plan(task, context)
              else:
-                 # Default to empty if provider cannot generate thought/plan tuple
-                 logger.error(f"Provider {self.provider} does not implement the required generate_plan returning (thought, plan).")
-                 thought, plan = "", []
+                 # Default to empty if provider cannot generate thought/confidence/plan tuple
+                 logger.error(f"Provider {self.provider} does not implement the required generate_plan returning (thought, confidence, plan).")
+                 thought, confidence, plan = "", 0.0, []
 
-        self._last_response = {"thought": thought, "plan": plan} # Store both
-        return thought, plan
+        self._last_response = {"thought": thought, "confidence": confidence, "plan": plan} # Store all three
+        return thought, confidence, plan
     
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
         """Generate a response based on task execution results."""

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import os
 from typing import Any, Dict, Optional, Sequence, List
 from datetime import datetime
 import uuid
@@ -107,8 +108,24 @@ class Agent:
         self.monitor.start()
 
     async def stop(self) -> None:
-        """Stop the agent and its browser pool."""
-        await self.browser_pool.stop()
+        """Stop the agent and associated browser resources (direct or pool)."""
+        # Stop direct browser if it exists
+        if self.browser:
+            logger.debug("Stopping direct browser instance.")
+            await self.browser.stop()
+            # We might not need to stop the pool if direct browser was used exclusively
+            # but stopping it safely if it was started doesn't hurt.
+            # Alternatively, only stop the pool if self.browser was None initially.
+        
+        # Stop the pool if it was started (and potentially not stopped by direct browser cleanup)
+        if self.browser_pool.started:
+            logger.debug("Stopping browser pool.")
+            await self.browser_pool.stop()
+        else:
+            # Log if pool wasn't started (matches warning seen in logs)
+            logger.warning("Agent stop: Browser pool was not started or already stopped.")
+            
+        # Stop monitor regardless
         self.monitor.stop()
         
         # Cancel any active tasks
@@ -153,19 +170,27 @@ class Agent:
             task_obj = asyncio.create_task(self._execute_task(task_dict, task_id))
             self.active_tasks[task_id] = task_obj
             
-            # Wait for completion
+            logger.debug(f"Agent.run awaiting task {task_id} completion...")
             result = await task_obj
+            logger.debug(f"Agent.run task {task_id} completed. Preparing to return result.")
+            
+            # --- Add Log Before Return --- 
+            logger.info(f"Agent.run returning result for task {task_id}: {str(result)[:200]}...") 
             return result
             
         except Exception as e:
-            logger.error(f"Task execution failed: {e}", exc_info=True)
-            raise
+            logger.error(f"Task execution failed in Agent.run: {e}", exc_info=True)
+            # Ensure failed tasks also return a dict, or handle appropriately
+            # Depending on desired behavior, re-raise or return specific error structure
+            raise # Re-raise for now to ensure visibility
         finally:
+            # --- Add Log in Finally --- 
+            logger.info(f"Agent.run entering finally block for task {task_id}")
             self.active_tasks.pop(task_id, None)
             try:
                 await self.cleanup()
             except Exception as e:
-                logger.error(f"Cleanup failed: {e}", exc_info=True)
+                logger.error(f"Cleanup failed in Agent.run finally block: {e}", exc_info=True)
 
     async def run_batch(self, tasks: List[str]) -> Dict[str, str]:
         """Run multiple tasks in parallel.
@@ -215,6 +240,8 @@ class Agent:
             consecutive_tool_failures = 0 
             # Initialize dom_context_str for the first iteration
             dom_context_str = "DOM not queried yet (no action taken)."
+            # Variable to hold extra context (e.g., full HTML) for the *next* iteration
+            extra_context_for_next_llm = None 
 
             try:
                 for i in range(max_iterations):
@@ -233,7 +260,7 @@ class Agent:
                         recent_history = [] 
                         history_context_str = "No history yet." if i == 0 else "History limit reached or disabled."
                         
-                    # Combine context components (DOM string is from *previous* iteration)
+                    # Combine context components (DOM from prev, history, and potential extra context)
                     context_for_llm = f"""
 Initial Task Context:
 {initial_context}
@@ -248,35 +275,75 @@ Recent Execution History (last {len(recent_history)} steps):
 {history_context_str}
 ```
 """
+                    # Add extra context if it exists from the previous low-confidence retry
+                    if extra_context_for_next_llm:
+                        logger.debug("Adding extra HTML context for LLM retry.")
+                        context_for_llm += f"\n\nExtended Context (Full HTML from Previous Step):\n```html\n{extra_context_for_next_llm[:5000]}... (truncated)\n```"
+                        extra_context_for_next_llm = None # Clear after use
+                        
                     logger.debug(f"Task {task_id} - Context for LLM (Iteration {i+1}):\n{context_for_llm}")
                     # --- End Context Preparation ---
 
                     # Step 1: Thought & Action Generation (LLM Call)
                     try:
-                        thought, plan_steps = await self.llm.generate_plan(task["description"], context_for_llm)
+                        # Now returns thought, confidence, plan_steps
+                        thought, confidence, plan_steps = await self.llm.generate_plan(task["description"], context_for_llm)
                         logger.info(f"Task {task_id} - Thought: {thought}")
-                        # Store thought immediately, action/observation added later
-                        current_history_entry = {"iteration": i+1, "thought": thought}
+                        logger.info(f"Task {task_id} - Confidence: {confidence:.2f}")
+                        
+                        # Store thought and confidence immediately
+                        current_history_entry = {"iteration": i+1, "thought": thought, "confidence": confidence}
                         action_history.append(current_history_entry)
 
                         if not plan_steps:
                             logger.warning(f"Task {task_id} - LLM did not provide a next step. Ending task.")
                             break 
 
-                        # For ReAct, we expect one action per iteration
                         next_step = plan_steps[0]
                         if len(plan_steps) > 1:
-                             logger.warning(f"Task {task_id} - LLM returned multiple steps ({len(plan_steps)}). Will execute only the first.")
+                             logger.warning(f"Task {task_id} - LLM returned {len(plan_steps)} steps. Will execute only the first.")
                         
-                        # --- Add finish tool check --- 
-                        if next_step.get("tool") == "finish":
-                            logger.info(f"Task {task_id} - LLM signaled completion. Reason: {next_step.get('input', {}).get('reason', 'None provided')}")
-                            current_history_entry["action"] = next_step # Record the finish action
-                            current_history_entry["observation"] = {"status": "success", "result": "Task marked as finished by LLM."}
-                            break # Exit the loop successfully
-                        # --- End finish tool check ---
+                        # Store action in history *before* confidence check
+                        current_history_entry["action"] = next_step 
                         
-                        current_history_entry["action"] = next_step # Add action to current history entry
+                        # --- Add Confidence Threshold Check --- 
+                        if confidence < self.config.confidence_threshold:
+                            logger.warning(
+                                f"Task {task_id} - Confidence ({confidence:.2f}) below threshold "
+                                f"({self.config.confidence_threshold}). Will re-prompt LLM."
+                            )
+                            
+                            # --- Fallback: Get Full HTML --- 
+                            logger.info(f"Task {task_id} - Confidence low, attempting to fetch full HTML for retry.")
+                            if self.browser:
+                                try:
+                                    full_html = await self.browser.get_html_source()
+                                    if full_html:
+                                        extra_context_for_next_llm = full_html
+                                        logger.info(f"Task {task_id} - Fetched HTML (len: {len(full_html)}) for next context.")
+                                    else:
+                                        logger.warning(f"Task {task_id} - Failed to fetch HTML (empty result).")
+                                except Exception as html_err:
+                                    logger.error(f"Task {task_id} - Error fetching full HTML: {html_err}")
+                                    extra_context_for_next_llm = f"Error fetching HTML: {html_err}" # Pass error info
+                            else:
+                                logger.warning(f"Task {task_id} - Cannot fetch HTML, no browser available.")
+                                extra_context_for_next_llm = "Browser not available to fetch HTML."
+                            # --- End Fallback --- 
+
+                            # Update observation to indicate low confidence and planned retry
+                            current_history_entry["observation"] = {
+                                "status": "low_confidence_retry", 
+                                "reason": f"Confidence {confidence:.2f} below threshold {self.config.confidence_threshold}",
+                                "fallback_info": f"Attempted to fetch full HTML for next iteration (result stored temporarily)."
+                            }
+                            # Loop continues, action is skipped below
+                        else:
+                            # Only check for finish tool if confidence is high enough
+                            if next_step.get("tool") == "finish":
+                                logger.info(f"Task {task_id} - LLM signaled completion with confidence {confidence:.2f}.")
+                                current_history_entry["observation"] = {"status": "success", "result": "Task marked as finished by LLM."}
+                                break # Exit the loop successfully
 
                     except Exception as e:
                         logger.error(f"Task {task_id} - Failed to generate thought/action: {e}", exc_info=True)
@@ -288,7 +355,11 @@ Recent Execution History (last {len(recent_history)} steps):
                         # Stop the task on LLM failure
                         return {"status": "failed", "error": f"LLM generation failed: {e}", "history": action_history}
 
-                    # Step 2: Execute Action (only if not 'finish')
+                    # Step 2: Execute Action (skip if low confidence)
+                    if current_history_entry.get("observation", {}).get("status") == "low_confidence_retry":
+                        logger.debug(f"Task {task_id} - Skipping action execution due to low confidence in previous step.")
+                        continue # Skip to the next iteration (context will be prepared with retry info)
+                        
                     tool_name = next_step.get("tool")
                     tool_input = next_step.get("input", {})
                     
@@ -309,8 +380,8 @@ Recent Execution History (last {len(recent_history)} steps):
                         # --- Action SUCCEEDED --- 
                         consecutive_tool_failures = 0 # Reset counter
                         
-                        # --- Get DOM and Screenshot AFTER successful action ---
-                        # Get Structured DOM for the *next* iteration's context
+                        # --- Get DOM AFTER successful action (Reset extra context) ---
+                        extra_context_for_next_llm = None # Clear any fallback context on success
                         try:
                             logger.debug("Getting DOM structure after successful action...")
                             dom_structure = await self._get_structured_dom()
@@ -324,10 +395,14 @@ Recent Execution History (last {len(recent_history)} steps):
                         screenshot_path_for_history = "Not taken or failed"
                         if self.config.use_vision and self.browser:
                             try:
-                                screenshot_filename = f"screenshot_{task_id}_iter_{i+1}.png"
+                                # --- Ensure outputs directory exists ---
+                                output_dir = "outputs"
+                                os.makedirs(output_dir, exist_ok=True)
+                                # --- Create filename within outputs dir ---
+                                screenshot_filename = os.path.join(output_dir, f"screenshot_{task_id}_iter_{i+1}.png")
                                 # Call screenshot, but ignore the returned bytes for now
-                                await self.browser.screenshot(path=screenshot_filename) 
-                                screenshot_path_for_history = screenshot_filename # Store the intended path
+                                await self.browser.screenshot(path=screenshot_filename)
+                                screenshot_path_for_history = screenshot_filename # Store the relative path
                                 logger.info(f"Task {task_id} - Screenshot saved to: {screenshot_path_for_history}")
                             except Exception as ss_e:
                                 logger.warning(f"Task {task_id} - Failed to take screenshot: {ss_e}")
@@ -349,7 +424,7 @@ Recent Execution History (last {len(recent_history)} steps):
                             "status": "success", 
                             "result": serializable_data, # Use the sanitized data
                             "error": result.error, # Include error field from ToolResult if any
-                            "screenshot": screenshot_path_for_history 
+                            "screenshot": screenshot_path_for_history # Path now includes "outputs/"
                         }
                         await self.memory.add(task_id, next_step, observation) 
                         action_history[-1]["observation"] = observation
@@ -371,8 +446,9 @@ Recent Execution History (last {len(recent_history)} steps):
                             logger.error(f"Task {task_id} - Reached max tool failures ({self.config.max_failures}). Stopping task.")
                             return {"status": "failed", "error": f"Reached max tool failures ({self.config.max_failures}) after error: {e}", "history": action_history}
                         
-                        # Keep the previous dom_context_str for the next iteration's context
-                        logger.warning("Keeping previous DOM context after tool failure.")
+                        # Reset extra context even on failure? Maybe not, let LLM see it.
+                        # extra_context_for_next_llm = None 
+                        logger.warning("Keeping previous DOM and potential extra HTML context after tool failure.")
                         
                     # Step 3 is now integrated: DOM/Screenshot taken after success, context built at start of loop
 

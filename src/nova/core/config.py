@@ -96,6 +96,7 @@ class AgentConfig(BaseModel):
     enable_memory: bool = True
     max_iterations: int = 10
     max_history_context_iterations: int = 5
+    confidence_threshold: float = 0.7
 
     class Config:
         extra = "allow" 

@@ -234,7 +234,7 @@ class NIMProvider(LanguageModel):
             logger.error(f"Error generating text: {e}", exc_info=True)
             raise
 
-    async def generate_plan(self, task: str, context: str) -> tuple[str, List[Dict[str, Any]]]:
+    async def generate_plan(self, task: str, context: str) -> tuple[str, float, List[Dict[str, Any]]]:
         """Generate a plan (thought and action) for executing a task using the NIM API."""
         task_str = str(task) if task is not None else ""
         context_str = str(context) if context is not None else ""
@@ -243,7 +243,7 @@ class NIMProvider(LanguageModel):
         # Use triple quotes for the main f-string
         prompt = f"""You are Nova, an intelligent browser automation agent designed to accomplish tasks by interacting with web pages using available tools.
 
-Your goal is to generate a plan to accomplish the given task based on the current context, **including the structure of the current web page**. Follow the Thought-Action format:
+Your goal is to generate a plan to accomplish the given task based on the current context, **including the structure of the current web page**. Follow the Thought-Action format, **including a confidence score for your proposed action**:
 
 1.  **Thought:** Briefly explain your reasoning process. 
     - Analyze the `Initial Task Context` and `Recent Execution History`.
@@ -251,7 +251,10 @@ Your goal is to generate a plan to accomplish the given task based on the curren
     - Note the outcome (`observation`) of the last step in the history, including any errors or the path to a `screenshot` taken after the action.
     - Determine the single best next step towards the `Task` goal based *primarily* on the current page structure and history.
     - If the goal is achieved according to the history and current page state, explain why and use the 'finish' tool.
-2.  **Action:** Generate the plan as a JSON array containing the **single next step** (a tool call or the 'finish' action).
+2.  **Confidence Score:** Provide a numerical score (0.0 to 1.0) indicating your confidence that the proposed action is correct and will succeed towards the goal. 
+    - Base confidence on: clarity of the goal, uniqueness/reliability of selectors (if applicable), consistency with history, likelihood of achieving the task objective with this step.
+    - Use lower scores if selectors are ambiguous, the action seems risky, or the goal is unclear.
+3.  **Action:** Generate the plan as a JSON array containing the **single next step** (a tool call or the 'finish' action).
 
 Task: {task_str}
 
@@ -259,7 +262,7 @@ Context:
 ```
 {context_str}
 ```
-*Note: The context above includes initial context, the current page structure **captured after the previous action completed**, and recent history. Each history entry includes 'thought', 'action', and 'observation'. The observation contains the action's 'status', 'result' or 'error', and potentially a 'screenshot' file path.* 
+*Note: The context above includes initial context, the current page structure captured after the previous action completed, and recent history. If the previous step had low confidence, the context might also include an 'Extended Context (Full HTML from Previous Step)' section.* 
 
 Available tools:
 - navigate: Navigate to a URL (input: {{'url': '...'}})
@@ -270,14 +273,13 @@ Available tools:
 - finish: Use this tool **only** when the task goal is fully achieved. (input: {{'reason': '...'}} - Optional reason for completion)
 
 Output Format:
-Your final output **must** be a valid JSON object containing two keys: 'thought' and 'plan'.
-The 'thought' value should be a string containing your reasoning.
-The 'plan' value should be a JSON array containing **exactly one** step object (either a tool action or the 'finish' action).
+Your final output **must** be a valid JSON object containing three keys: 'thought' (string), 'confidence' (float between 0.0 and 1.0), and 'plan' (JSON array with one step).
 
 Example (Action Step):
 ```json
 {{
-  "thought": "The task is to click the login button. Looking at the `Current Page Structure (After Previous Action)`, I see a button with `text: 'Login'` and `attributes: {{'id': 'login-btn'}}`. I will use the click tool with the selector '#login-btn'.",
+  "thought": "The task is to click the login button. Looking at the `Current Page Structure (After Previous Action)`, I see a button with `text: 'Login'` and a unique `id: 'login-btn'`. This seems unambiguous.",
+  "confidence": 0.95,
   "plan": [
     {{"tool": "click", "input": {{"selector": "#login-btn"}}}}
   ]
@@ -288,32 +290,31 @@ Example (Finish Step):
 ```json
 {{
   "thought": "The user asked for the page title, and the context shows the title is 'Example Domain'. The task is complete.",
+  "confidence": 1.0,
   "plan": [
     {{"tool": "finish", "input": {{"reason": "Found the page title as requested."}}}}
   ]
 }}
 ```
 
-Generate the thought and the single next step (or finish action) for the task:"""
+Generate the thought, confidence score, and the single next step (or finish action) for the task:"""
         # --- End Prompt ---
 
         try:
             # Use the standard generate method which now handles nvext correctly
             response_text = await self.generate(prompt)
             if not response_text:
-                logger.warning("Invalid response (empty) from NIM API, returning empty plan")
-                return "", []
+                logger.warning("Invalid response (empty) from NIM API, returning empty plan/confidence")
+                return "", 0.0, []
             
-            # Parse the response expecting the {"thought": ..., "plan": [...]} structure
-            thought, plan_steps = self._parse_thought_plan_response(response_text)
-            logger.info("Successfully parsed thought and plan steps.")
-            return thought, plan_steps
+            # Parsing method now returns the 3-tuple
+            thought, confidence, plan_steps = self._parse_thought_plan_response(response_text)
+            # Log was moved inside the parser
+            return thought, confidence, plan_steps
             
         except Exception as e:
-            # Log the specific error during generation or parsing
             logger.error(f"Failed to generate or parse plan with NIM: {e}", exc_info=True)
-            # Return empty thought and plan on any failure during this process
-            return "", []
+            return "", 0.0, []
 
     # Remove the old _get_default_plan method as fallback now returns empty
     # def _get_default_plan(self, task: str) -> List[Dict[str, Any]]: ... 
@@ -322,8 +323,8 @@ Generate the thought and the single next step (or finish action) for the task:""
     # def _parse_plan_response(self, response: Dict[str, Any]) -> List[Dict[str, Any]]: ...
 
     # --- Add new parsing method for Thought/Plan JSON ---
-    def _parse_thought_plan_response(self, response_text: str) -> tuple[str, List[Dict[str, Any]]]:
-        """Parse the LLM response expecting {'thought': ..., 'plan': [...]} JSON.
+    def _parse_thought_plan_response(self, response_text: str) -> tuple[str, float, List[Dict[str, Any]]]:
+        """Parse the LLM response expecting {'thought': ..., 'confidence': ..., 'plan': [...]} JSON.
            Extracts the JSON object, trying ```json first, then generic {}.
         """
         logger.debug(f"Attempting to parse thought/plan response (len={len(response_text)} chars)")
@@ -346,8 +347,23 @@ Generate the thought and the single next step (or finish action) for the task:""
             logger.debug(f"Extracted JSON string: {plan_json[:500]}...")
             parsed_data = json.loads(plan_json)
             
+            if not isinstance(parsed_data, dict):
+                raise ValueError("Parsed JSON is not a dictionary")
+
+            # Extract thought, confidence, and plan
             thought = parsed_data.get("thought", "") 
             plan_steps = parsed_data.get("plan", []) 
+            confidence = 0.0 # Default confidence
+            raw_confidence = parsed_data.get("confidence")
+            if isinstance(raw_confidence, (float, int)):
+                confidence = max(0.0, min(1.0, float(raw_confidence))) # Clamp between 0.0 and 1.0
+            elif isinstance(raw_confidence, str):
+                try:
+                    confidence = max(0.0, min(1.0, float(raw_confidence)))
+                except ValueError:
+                    logger.warning(f"Could not parse confidence score string: '{raw_confidence}'. Defaulting to 0.0.")
+            elif raw_confidence is not None:
+                 logger.warning(f"Unexpected type for confidence score: {type(raw_confidence)}. Defaulting to 0.0.")
 
             if not isinstance(plan_steps, list):
                 raise ValueError("The 'plan' field must contain a list of steps")
@@ -363,9 +379,9 @@ Generate the thought and the single next step (or finish action) for the task:""
                 else:
                     logger.warning(f"Skipping invalid step format in plan: {step}")
             
-            # --- Fix Misleading Log --- 
-            logger.info(f"Successfully parsed thought and {len(valid_steps)} plan steps.") # Moved inside try
-            return thought, valid_steps
+            logger.info(f"Successfully parsed thought, confidence={confidence:.2f}, and {len(valid_steps)} plan steps.")
+            # Return tuple with confidence score
+            return thought, confidence, valid_steps
 
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             logger.error(f"Failed to parse thought/plan JSON: {e}", exc_info=True)
@@ -374,7 +390,7 @@ Generate the thought and the single next step (or finish action) for the task:""
                  logger.error(f"JSON string that failed parsing: {plan_json}")
             else:
                  logger.error(f"Full response text was: {response_text}")
-            return "", [] 
+            return "", 0.0, [] 
     # --- End new parsing method ---
 
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:

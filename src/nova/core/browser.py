@@ -165,6 +165,25 @@ class Browser:
         self._last_used = datetime.now()
         return screenshot
 
+    async def get_html_source(self) -> str:
+        """Get the full HTML source of the current page.
+        
+        Returns:
+            The HTML source code as a string, or an empty string if failed.
+        """
+        if not self._page:
+            logger.error("Cannot get HTML source: Browser not started or page not available.")
+            return ""
+        
+        try:
+            logger.debug("Getting page HTML content...")
+            content = await self._page.content()
+            logger.debug(f"Successfully retrieved HTML content (length: {len(content)}).")
+            return content
+        except Exception as e:
+            logger.error(f"Failed to get page HTML content: {e}", exc_info=True)
+            return ""
+
     def is_expired(self, max_age: timedelta) -> bool:
         """Check if the browser instance has expired.
         
