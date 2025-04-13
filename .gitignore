@@ -45,4 +45,22 @@ htmlcov/
 # Playwright
 node_modules/
 playwright-report/
-test-results/ 
+test-results/
+
+# Generated files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.csv
+*.xlsx
+*.xls
+*.zip
+*.tar.gz
+*.tmp
+*.temp
+*.bak
+*.json
+*.db
+*.sqlite 
