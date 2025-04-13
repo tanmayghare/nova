@@ -51,6 +51,7 @@ addopts = "-v --cov=src.nova --cov-report=term-missing"
 [tool.coverage.run]
 source = ["src/nova"]
 omit = ["*/tests/*"]
+data_file = "outputs/.coverage"
 
 [tool.coverage.report]
 exclude_lines = [

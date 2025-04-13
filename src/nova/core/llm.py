@@ -55,9 +55,11 @@ Your goal is to generate a plan to accomplish the given task based on the curren
 1.  **Thought:** Briefly explain your reasoning process. 
     - Analyze the `Initial Task Context` and `Recent Execution History`.
     - **Critically examine the `Current Page Structure (After Previous Action)` JSON.** 
-    - Note the outcome (`observation`) of the last step in the history, including any errors or the path to a `screenshot` taken after the action.
-    - Determine the single best next step towards the `Task` goal based *primarily* on the current page structure and history.
-    - If the goal is achieved according to the history and current page state, explain why and use the 'finish' tool.
+    - Note the outcome (`observation`) of the last step in the history. 
+        - **If the last observation status was 'error':** Analyze the `error` message. Based on the error and the current page structure, decide on a corrective action (e.g., try a different selector, wait, try a different tool) or conclude with `finish` if recovery is impossible.
+        - **If the last observation status was 'low_confidence_retry':** Re-evaluate the goal using the potentially added 'Extended Context (Full HTML)' and propose a higher-confidence action or `finish`.
+        - **Otherwise (success or first step):** Determine the single best next step towards the `Task` goal based on the current page structure and history.
+    - If the overall task goal is achieved according to the history and current page state, explain why and use the 'finish' tool.
 2.  **Confidence Score:** Provide a numerical score (0.0 to 1.0) indicating your confidence that the proposed action is correct and will succeed towards the goal. 
     - Base confidence on: clarity of the goal, uniqueness/reliability of selectors (if applicable), consistency with history, likelihood of achieving the task objective with this step.
     - Use lower scores if selectors are ambiguous, the action seems risky, or the goal is unclear.
@@ -69,7 +71,7 @@ Context:
 ```
 {context}
 ```
-*Note: The context above includes initial context, the current page structure captured after the previous action completed, and recent history. If the previous step had low confidence, the context might also include an 'Extended Context (Full HTML from Previous Step)' section.* 
+*Note: The context above includes initial context, the current page structure captured after the previous action completed, and recent history. Each history entry includes 'thought', 'action', 'confidence' (if available), and 'observation'. The observation contains the action's 'status' ('success', 'error', 'low_confidence_retry', 'halted'), 'result' or 'error', and potentially a 'screenshot' file path. If the previous step had low confidence, the context might also include an 'Extended Context (Full HTML from Previous Step)' section.* 
 
 Available tools:
 - navigate: Navigate to a URL (input: {{'url': '...'}})
@@ -90,6 +92,19 @@ Example (Action Step):
   "confidence": 0.95,
   "plan": [
     {{\"tool\": \"click\", \"input\": {{\"selector\": \"#login-btn\"}}}}
+  ]
+}}
+```
+
+Example (Corrective Step after Error):
+```json
+{{
+  "thought": "The previous action `click` with selector '#submit' failed with error 'Timeout waiting for element'. The current page structure still shows the button exists. I will try waiting for the element to be clickable first, then click again.",
+  "confidence": 0.8,
+  "plan": [
+    {{\"tool\": \"wait\", \"input\": {{"selector": \"#submit\", \"timeout\": 15}}}}
+    // Note: Ideally the LLM would then plan the click in the *next* step after the wait succeeds.
+    // For now, we expect one action per step.
   ]
 }}
 ```

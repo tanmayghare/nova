@@ -63,4 +63,7 @@ test-results/
 *.bak
 *.json
 *.db
-*.sqlite 
+*.sqlite
+
+# Outputs
+outputs/ 

@@ -433,8 +433,9 @@ Recent Execution History (last {len(recent_history)} steps):
                         
                     except Exception as e:
                         # --- Action FAILED --- 
-                        # Handle tool execution failure
                         logger.error(f"Task {task_id} - Step execution failed: {tool_name}({tool_input}) - {e}", exc_info=True)
+                        
+                        # Prepare error observation
                         observation = {"status": "error", "error": str(e)}
                         await self.memory.add(task_id, next_step, observation)
                         action_history[-1]["observation"] = observation
@@ -446,12 +447,21 @@ Recent Execution History (last {len(recent_history)} steps):
                             logger.error(f"Task {task_id} - Reached max tool failures ({self.config.max_failures}). Stopping task.")
                             return {"status": "failed", "error": f"Reached max tool failures ({self.config.max_failures}) after error: {e}", "history": action_history}
                         
-                        # Reset extra context even on failure? Maybe not, let LLM see it.
-                        # extra_context_for_next_llm = None 
-                        logger.warning("Keeping previous DOM and potential extra HTML context after tool failure.")
+                        # --- Capture DOM state AFTER error --- 
+                        logger.info(f"Task {task_id} - Capturing DOM state after tool execution failure.")
+                        try:
+                            dom_structure_after_error = await self._get_structured_dom()
+                            dom_context_str = json.dumps(dom_structure_after_error, indent=2)
+                            logger.debug("DOM structure updated after error for next context.")
+                        except Exception as dom_err_after_fail:
+                            logger.error(f"Task {task_id} - Failed to get structured DOM *after* tool failure: {dom_err_after_fail}", exc_info=True)
+                            dom_context_str = "Error fetching DOM structure after action failure."
+                        # --- End Capture DOM state --- 
                         
-                    # Step 3 is now integrated: DOM/Screenshot taken after success, context built at start of loop
-
+                        # Keep potential extra_context_for_next_llm from previous low-confidence step if applicable
+                        logger.warning("Keeping potential extra HTML context after tool failure.")
+                        # Loop continues, error info and post-error DOM will be in next context
+                        
                 # After loop (max iterations reached or break condition)
                 logger.info(f"Task {task_id} - ReAct loop finished after {len(action_history)} iterations.")
 
