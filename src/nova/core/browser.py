@@ -107,10 +107,32 @@ class Browser:
             selector: CSS selector for the element to click
         """
         if not self._page:
+            logger.error("Cannot click: Browser not started or page not available.")
             raise RuntimeError("Browser not started")
-        await self._page.click(selector)
-        self._last_used = datetime.now()
         
+        try:
+            logger.info(f"Attempting standard click on selector: {selector}")
+            # Default timeout for click is often 30s in Playwright, adjust if needed
+            await self._page.click(selector, timeout=self.config.action_timeout * 1000) # Use configured timeout
+            logger.info(f"Standard click successful for selector: {selector}")
+        except Exception as e:
+            # Check if the error message indicates obstruction (heuristic)
+            error_str = str(e).lower()
+            if "intercepts pointer events" in error_str or "element is covered by" in error_str:
+                logger.warning(f"Standard click failed for selector '{selector}' due to obstruction: {e}. Attempting forced click...")
+                try:
+                    await self._page.click(selector, force=True, timeout=self.config.action_timeout * 1000)
+                    logger.info(f"Forced click successful for selector: {selector}")
+                except Exception as force_e:
+                    logger.error(f"Forced click also failed for selector '{selector}': {force_e}")
+                    raise force_e # Re-raise the error from the forced click
+            else:
+                # Re-raise original error if it wasn't related to obstruction
+                logger.error(f"Standard click failed for selector '{selector}' for reason other than obstruction: {e}")
+                raise e
+        finally:
+            self._last_used = datetime.now()
+
     async def type(self, selector: str, text: str) -> None:
         """Type text into an element matching the selector.
         
