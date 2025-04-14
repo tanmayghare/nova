@@ -365,31 +365,49 @@ def validate_plan_data(plan_data: Dict) -> Optional[PlanResponse]:
 
 
 class LLM:
-    """Language model interface for Nova."""
-    
+    """Language Model Manager."""
+
     def __init__(
         self,
-        provider: str = "nim",  # Default to NIM provider
-        docker_image: str = "nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:latest",
-        api_base: str = "http://localhost:8000",
-        model_name: str = "nvidia/llama-3.3-nemotron-super-49b-v1",
-        batch_size: int = 4,
-        enable_streaming: bool = True,
-        **kwargs: Any
-    ) -> None:
-        """Initialize the language model.
-        
+        # model: BaseLanguageModel,
+        provider: str = "nim", # Default provider
+        model_object: Optional[Any] = None, # The actual model object
+        model_name: Optional[str] = None, # Model name string
+        model_type: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        cache_dir: Optional[str] = None,
+        cache_ttl: int = 3600,
+        max_retries: int = 3,
+        timeout: int = 60,
+        api_base: Optional[str] = None,
+        docker_image: Optional[str] = None,
+        batch_size: Optional[int] = None,
+        enable_streaming: Optional[bool] = None
+    ):
+        """Initialize the LLM.
+
         Args:
-            provider: LLM provider to use ("nim" or "ollama")
-            docker_image: Docker image for NIM service
-            api_base: Base URL for NIM API
-            model_name: Name of the model to use
-            batch_size: Maximum number of requests to process in parallel
-            enable_streaming: Whether to enable response streaming
-            **kwargs: Additional provider-specific arguments
+            provider: Name of the LLM provider (e.g., 'nim', 'openai').
+            model_object: The instantiated model object (e.g., LlamaModel).
+            model_name: Identifier for the model.
+            model_type: Type of model (e.g., 'llama', 'gpt').
+            temperature: Sampling temperature.
+            max_tokens: Maximum number of tokens to generate.
+            cache_dir: Directory for caching LLM responses.
+            cache_ttl: Cache time-to-live in seconds.
+            max_retries: Maximum number of retries for API calls.
+            timeout: Timeout for API calls.
+            api_base: Base URL for API calls (used by NIMProvider).
+            docker_image: Docker image name (used by NIMProvider).
+            batch_size: Batch size for NIM provider.
+            enable_streaming: Enable streaming for NIM provider.
         """
         self.provider = provider.lower()
+        self.model_object = model_object # Store the model object
         self.model_name = model_name
+        self.model_type = model_type.lower() if model_type else None
+        self.temperature = temperature
         self._batch_size = batch_size
         self._enable_streaming = enable_streaming
         self._last_response = None  # Initialize last response
@@ -402,15 +420,22 @@ class LLM:
                 model_name=model_name,
                 batch_size=batch_size,
                 enable_streaming=enable_streaming,
-                **kwargs
             )
         elif self.provider == "ollama":
             self._provider = LlamaModel(
                 model_name=model_name,
                 batch_size=batch_size,
                 enable_streaming=enable_streaming,
-                **kwargs
             )
+        elif self.provider == "llama":
+             if self.model_object and isinstance(self.model_object, LlamaModel):
+                  self._provider = self.model_object
+             else:
+                  # Maybe initialize LlamaModel if only name/type were given?
+                  logger.warning(f"Provider set to 'llama' but no valid LlamaModel object provided. Attempting fallback init.")
+                  # Add fallback logic if needed, e.g., initialize LlamaModel here
+                  # For now, raise error or handle as appropriate
+                  raise ValueError("Provider 'llama' requires a valid 'model_object' of type LlamaModel during LLM init.")
         else:
             raise ValueError(f"Unsupported provider: {provider}")
         
