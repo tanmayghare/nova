@@ -1,6 +1,7 @@
 """NVIDIA NIM API integration."""
 
 import json
+import commentjson
 import logging
 import os
 from typing import Any, Dict, List, Optional, AsyncIterator
@@ -35,7 +36,7 @@ class NIMConfig(BaseModel):
         description="Name of the model to use"
     )
     temperature: float = Field(
-        default=0.2,
+        default=0.1,
         description="Temperature for sampling"
     )
     max_tokens: int = Field(
@@ -71,7 +72,7 @@ class NIMProvider(LanguageModel):
         docker_image: str = "nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:latest",
         api_base: str = "https://api.nvcf.nvidia.com/v2/nvcf",
         model_name: str = "llama-3.3-nemotron-super-49b-v1",
-        temperature: float = 0.2,
+        temperature: float = 0.1,
         max_tokens: int = 4096,
         top_p: float = 0.9,
         top_k: int = 50,
@@ -340,28 +341,54 @@ Generate the thought, confidence score, and the single next step (or finish acti
     # --- Add new parsing method for Thought/Plan JSON ---
     def _parse_thought_plan_response(self, response_text: str) -> tuple[str, float, List[Dict[str, Any]]]:
         """Parse the LLM response expecting {'thought': ..., 'confidence': ..., 'plan': [...]} JSON.
-           Extracts the JSON object, trying ```json first, then generic {}.
+           Extracts the JSON object robustly, handling surrounding text and markdown fences.
         """
         logger.debug(f"Attempting to parse thought/plan response (len={len(response_text)} chars)")
-        plan_json = None
+        plan_json_str = None
+        cleaned_json_str = None
         try:
-            # Priority 1: Look for ```json ... ``` block
-            json_block_match = re.search(r"```json\s*(\{.*?\})\s*```", response_text, re.DOTALL)
-            if json_block_match:
-                plan_json = json_block_match.group(1).strip()
-                logger.debug("Extracted JSON using ```json block.")
-            else:
-                # Priority 2: Look for the first generic { ... } block
-                generic_match = re.search(r"\{\s*.*?\s*\}", response_text, re.DOTALL)
-                if generic_match:
-                    plan_json = generic_match.group(0).strip()
-                    logger.debug("Extracted JSON using generic {.*?} block.")
+            # --- Try to extract the LAST ```json block ---
+            last_marker_index = response_text.rfind('```json')
+            if last_marker_index != -1:
+                start_after_marker = last_marker_index + len('```json')
+                end_marker_index = response_text.find('```', start_after_marker)
+                if end_marker_index != -1:
+                    plan_json_str = response_text[start_after_marker:end_marker_index].strip()
+                    logger.debug(f"Extracted potential JSON from last ```json block.")
                 else:
-                     raise ValueError("No JSON object found in response text using ```json or {.*?} patterns.")
-
-            logger.debug(f"Extracted JSON string: {plan_json[:500]}...")
-            parsed_data = json.loads(plan_json)
+                    # If opening ```json found but no closing ```, maybe it runs to the end?
+                    plan_json_str = response_text[start_after_marker:].strip()
+                    logger.warning("Found ```json marker but no closing ```. Using text until end.")
             
+            # --- Fallback: Try finding last { ... } block if ```json failed ---
+            if not plan_json_str or not plan_json_str.startswith('{'):
+                logger.debug("No valid JSON found in ```json block, trying last { ... } block as fallback.")
+                last_start_index = response_text.rfind('{')
+                last_end_index = -1
+                if last_start_index != -1:
+                    # Find the last '}' *after* the last '{'.
+                    last_end_index = response_text.rfind('}', last_start_index)
+                
+                if last_start_index != -1 and last_end_index != -1 and last_end_index > last_start_index:
+                    plan_json_str = response_text[last_start_index : last_end_index + 1].strip()
+                    logger.debug(f"Extracted potential JSON based on last {{ and last }} as fallback.")
+                else:
+                    plan_json_str = None # Ensure it's None if fallback also fails
+            
+            # --- Final Check ---
+            if not plan_json_str or not plan_json_str.strip().startswith('{'):
+                raise ValueError("Could not find a plausible JSON object block (```json or { ... }) in the response text.")
+            
+            # --- Cleaning Step ---
+            # Remove backticks before parsing
+            cleaned_json_str = plan_json_str.replace('`', '')
+            logger.debug(f"Cleaned JSON string (removed backticks): {cleaned_json_str[:500]}...")
+
+            # --- Parsing Step ---
+            logger.debug(f"Attempting to parse cleaned string using commentjson: {cleaned_json_str[:500]}...")
+            parsed_data = commentjson.loads(cleaned_json_str)
+            # ----------------------------------------------------------------
+
             if not isinstance(parsed_data, dict):
                 raise ValueError("Parsed JSON is not a dictionary")
 
@@ -398,14 +425,16 @@ Generate the thought, confidence score, and the single next step (or finish acti
             # Return tuple with confidence score
             return thought, confidence, valid_steps
 
-        except (json.JSONDecodeError, ValueError, TypeError) as e:
+        except (commentjson.JSONLibraryException, ValueError, TypeError) as e:
             logger.error(f"Failed to parse thought/plan JSON: {e}", exc_info=True)
-            # Log the specific JSON string that failed parsing, if found
-            if plan_json:
-                 logger.error(f"JSON string that failed parsing: {plan_json}")
+            # Log the string that was *attempted* to be parsed (cleaned version)
+            if 'cleaned_json_str' in locals():
+                logger.error(f"String attempted for parsing (after cleaning): {cleaned_json_str}")
+            elif plan_json_str is not None:
+                 logger.error(f"String attempted for parsing (before cleaning): {plan_json_str}")
             else:
-                 logger.error(f"Full response text was: {response_text}")
-            return "", 0.0, [] 
+                logger.error(f"Full response text (extraction might have failed earlier): {response_text}")
+            return "", 0.0, []
     # --- End new parsing method ---
 
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
