@@ -88,6 +88,10 @@ class AgentConfig(BaseModel):
         default_factory=dict,
         description="Memory configurations"
     )
+    base_prompt: str = Field(
+        default="You are an autonomous agent designed to follow instructions and complete tasks by thinking step-by-step and using the available tools.",
+        description="Base system prompt for the agent's LLM."
+    )
 
     max_steps: int = 100
     max_failures: int = 3

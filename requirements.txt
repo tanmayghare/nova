@@ -13,3 +13,13 @@ cachetools>=5.5.2  # Required for LLM response caching
 tenacity>=9.1.2  # Required for retry mechanisms
 aiohttp>=3.8.0  # Required for async HTTP requests
 setuptools>=69.0.0  # Required for package installation and distribution
+
+# --- Added for RAG Learning System ---
+chromadb>=0.4.22 # Vector Database for interaction logs
+sentence-transformers>=2.2.2 # For embedding generation
+
+# Add commentjson for robust JSON parsing
+commentjson
+
+# Add pysqlite3-binary to provide a newer sqlite3 version for ChromaDB
+pysqlite3-binary

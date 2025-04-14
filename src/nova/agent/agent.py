@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any
 from collections import deque
 from datetime import datetime
 import json
+import time # Add time for potential delays if needed later
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -68,6 +69,19 @@ class Agent(CoreAgent):
             browser_config=browser_config,
         )
         self.action_history: deque = deque(maxlen=self.HISTORY_MAX_LENGTH)
+        # --- Initialize Interaction Logger instance and attributes ---
+        # The actual InteractionLogger class might be None if import failed in core
+        # The core agent's _execute_task handles the logging logic safely.
+        try:
+            from nova.learning.interaction_logger import InteractionLogger
+            self.interaction_logger = InteractionLogger()
+        except ImportError:
+            logger.warning("InteractionLogger not found. Interaction logging disabled.")
+            self.interaction_logger = None
+
+        self._current_log_session_id: Optional[str] = None
+        self._current_log_step_id: int = 0
+        # -------------------------------------------------------
 
     async def _get_structured_dom(self, max_elements: int = 100) -> List[Dict[str, Any]]:
         """Extracts structured information about interactive elements from the current page.
