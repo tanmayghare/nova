@@ -14,6 +14,7 @@ class ToolConfig(BaseModel):
     timeout: int = Field(30, description="Timeout in seconds for tool execution")
     retry_attempts: int = Field(3, description="Number of retry attempts on failure")
     dependencies: List[str] = Field(default_factory=list, description="List of tool dependencies")
+    input_schema: Optional[Dict[str, Any]] = Field(default=None, description="Schema describing the expected input parameters")
 
 
 class ToolResult:
