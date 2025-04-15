@@ -1,7 +1,9 @@
 """Example demonstrating hybrid automation with Nova, combining HTML parsing and vision analysis."""
 
+import os
 import asyncio
 import logging
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -28,7 +30,7 @@ async def main():
     config = AgentConfig(
         browser_config=BrowserConfig(
             headless=False,  # Show browser for demonstration
-            viewport={"width": 1280, "height": 800},
+            viewport={"width": os.environ.get("BROWSER_VIEWPORT_WIDTH"), "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT")},
             highlight_elements=True,
             slow_motion=0,
             browser_args=[
@@ -43,12 +45,12 @@ async def main():
     # Initialize Llama model
     logger.info("Initializing Llama model")
     llama_model = LlamaModel(
-        model_name="mistral-small3.1:24b-instruct-2503-q4_K_M",
-        temperature=0.7,
-        max_tokens=2048,
-        top_p=0.95,
-        top_k=40,
-        repeat_penalty=1.1
+        model_name=os.environ.get("MODEL_NAME"),
+        temperature=os.environ.get("MODEL_TEMPERATURE"),
+        max_tokens=os.environ.get("MODEL_MAX_TOKENS"),
+        top_p=os.environ.get("MODEL_TOP_P"),
+        top_k=os.environ.get("MODEL_TOP_K"),
+        repeat_penalty=os.environ.get("MODEL_REPETITION_PENALTY")
     )
     logger.info("Initialized Llama model")
     

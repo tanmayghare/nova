@@ -68,3 +68,6 @@ test-results/
 # Outputs
 outputs/
 logs/
+
+#DB
+db/chroma_db/

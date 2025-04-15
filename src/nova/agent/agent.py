@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any
 from collections import deque
 from datetime import datetime
 import json
+import os
 import time # Add time for potential delays if needed later
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -51,13 +52,13 @@ class Agent(CoreAgent):
         if final_llm is None:
             final_llm = LLM(
                 provider=config.llm_config.provider if config else "nim",
-                docker_image=config.llm_config.nim_config.docker_image if config else "nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:latest",
-                api_base=config.llm_config.nim_config.api_base if config else "http://localhost:8000",
-                model_name=config.llm_config.model_name if config else "nvidia/llama-3.3-nemotron-super-49b-v1",
-                temperature=config.llm_config.temperature if config else 0.2,
-                max_tokens=config.llm_config.max_tokens if config else 4096,
-                batch_size=config.llm_config.batch_size if config else 4,
-                enable_streaming=config.llm_config.enable_streaming if config else True,
+                docker_image=config.llm_config.nim_config.docker_image if config else os.environ.get("NIM_DOCKER_IMAGE"),
+                api_base=config.llm_config.nim_config.api_base if config else os.environ.get("NIM_API_BASE_URL"),
+                model_name=config.llm_config.model_name if config else os.environ.get("NIM_MODEL_NAME"),
+                temperature=config.llm_config.temperature if config else os.environ.get("MODEL_TEMPERATURE"),
+                max_tokens=config.llm_config.max_tokens if config else os.environ.get("MODEL_MAX_TOKENS"),
+                batch_size=config.llm_config.batch_size if config else os.environ.get("MODEL_BATCH_SIZE"),
+                enable_streaming=config.llm_config.enable_streaming if config else os.environ.get("MODEL_ENABLE_STREAMING"),
             )
 
         # Initialize core agent

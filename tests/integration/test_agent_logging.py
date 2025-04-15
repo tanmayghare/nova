@@ -30,7 +30,7 @@ async def test_agent(mocker, test_log_file_path):
         provider="mock", # Using mock provider
         model_name="mock-model",
         nim_config=NIMConfig(api_base="mock-url", docker_image="mock-image"),
-        temperature=0.1,
+        temperature=os.environ.get("MODEL_TEMPERATURE"),
         max_tokens=100,
         batch_size=1,
         enable_streaming=False

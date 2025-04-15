@@ -7,7 +7,9 @@ This example demonstrates:
 - Element highlighting
 """
 
+import os
 import asyncio
+
 from rich.console import Console
 from rich.panel import Panel
 from nova.core.agent import Agent
@@ -26,7 +28,7 @@ async def main():
         ),
         browser_config=BrowserConfig(
             headless=False,
-            viewport={"width": 1280, "height": 800},
+            viewport={"width": os.environ.get("BROWSER_VIEWPORT_WIDTH"), "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT")},
             highlight_elements=True,
             slow_motion=0
         )

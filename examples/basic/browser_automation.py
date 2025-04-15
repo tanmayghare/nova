@@ -35,7 +35,7 @@ async def main():
     browser_config = BrowserConfig(
         headless=False,  # Show the browser window
         timeout=int(os.getenv("BROWSER_TIMEOUT", "30000")),
-        viewport={"width": 1280, "height": 720},  # Set a reasonable window size
+        viewport={"width": os.environ.get("BROWSER_VIEWPORT_WIDTH"), "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT")},  # Set a reasonable window size
     )
     
     # Create agent

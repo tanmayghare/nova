@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import subprocess
+import os
 from nova.core.agent import Agent
 from nova.core.config import AgentConfig, BrowserConfig
 from nova.core.llm import LLM
@@ -18,8 +19,8 @@ class BrowserAutomation:
         """Setup the browser automation environment."""
         # Create LLM wrapper with NIM provider
         llm = LLM(
-            provider="nim",
-            model_name="nvidia/llama-3.3-nemotron-super-49b-v1",
+            provider=os.environ.get("LLM_PROVIDER"),
+            model_name=os.environ.get("MODEL_NAME"),
             temperature=0.0,  # Lower temperature for more deterministic responses
             max_tokens=4096
         )
@@ -34,7 +35,7 @@ class BrowserAutomation:
         browser_config = BrowserConfig(
             headless=True,  # Run in headless mode
             timeout=30,
-            viewport={"width": 1280, "height": 720}
+            viewport={"width": os.environ.get("BROWSER_VIEWPORT_WIDTH"), "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT")}
         )
         
         # Create agent

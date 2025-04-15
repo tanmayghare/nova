@@ -112,6 +112,11 @@ class Browser:
         
         try:
             logger.info(f"Attempting standard click on selector: {selector}")
+            # Explicitly wait for element to be visible and potentially enabled before clicking
+            # Playwright's click auto-waits for visible/enabled, but we add an explicit wait for robustness
+            await self._page.wait_for_selector(selector, state='visible', timeout=self.config.action_timeout * 1000)
+            logger.debug(f"Element '{selector}' is visible, proceeding with click.")
+            
             # Default timeout for click is often 30s in Playwright, adjust if needed
             await self._page.click(selector, timeout=self.config.action_timeout * 1000) # Use configured timeout
             logger.info(f"Standard click successful for selector: {selector}")
@@ -142,8 +147,21 @@ class Browser:
         """
         if not self._page:
             raise RuntimeError("Browser not started")
-        await self._page.fill(selector, text)
-        self._last_used = datetime.now()
+            
+        logger.info(f"Attempting to type into selector: {selector}")
+        try:
+            # Explicitly wait for element to be visible/enabled before filling
+            await self._page.wait_for_selector(selector, state='visible', timeout=self.config.action_timeout * 1000)
+            logger.debug(f"Element '{selector}' is visible, proceeding with fill.")
+            
+            # Add timeout to fill for consistency
+            await self._page.fill(selector, text, timeout=self.config.action_timeout * 1000) 
+            logger.info(f"Successfully typed into selector: {selector}")
+        except Exception as e:
+            logger.error(f"Failed to type into selector '{selector}': {e}", exc_info=True)
+            raise # Re-raise the exception
+        finally:
+            self._last_used = datetime.now()
         
     async def get_text(self, selector: str) -> str:
         """Get text content from an element matching the selector.

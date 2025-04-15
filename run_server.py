@@ -1,7 +1,11 @@
 """Script to run the Nova dashboard server."""
 
 import argparse
+from dotenv import load_dotenv  # Import the function
 from src.nova.web.server import run_server
+
+# Load environment variables from .env file
+load_dotenv()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the Nova dashboard server")

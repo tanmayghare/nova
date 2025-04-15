@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import pytest
 from datetime import datetime
 
@@ -28,7 +29,7 @@ async def test_agent_workflow():
     
     browser_config = BrowserConfig(
         headless=True,  # Run in headless mode for testing
-        viewport={"width": 1280, "height": 800}
+        viewport={"width": os.environ.get("BROWSER_VIEWPORT_WIDTH"), "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT")}
     )
     
     # Create agent
@@ -137,7 +138,7 @@ async def test_parallel_task_execution():
     
     browser_config = BrowserConfig(
         headless=True,  # Run in headless mode for testing
-        viewport={"width": 1280, "height": 800}
+        viewport={"width": os.environ.get("BROWSER_VIEWPORT_WIDTH"), "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT")}
     )
     
     # Create agent

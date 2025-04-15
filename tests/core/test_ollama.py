@@ -1,5 +1,6 @@
 import requests
 import json
+import os
 
 def test_ollama():
     prompt = """You must respond with a valid JSON object that has a 'steps' array. No other text, just the JSON:
@@ -19,13 +20,13 @@ def test_ollama():
     response = requests.post(
         "http://localhost:11434/api/generate",
         json={
-            "model": "mistral-small3.1:24b-instruct-2503-q4_K_M",
+            "model": os.environ.get("MODEL_NAME"),
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": 0.7,
-                "top_p": 0.95,
-                "repeat_penalty": 1.1
+                "temperature": os.environ.get("MODEL_TEMPERATURE"),
+                "top_p": os.environ.get("MODEL_TOP_P"),
+                "repeat_penalty": os.environ.get("MODEL_REPETITION_PENALTY")
             }
         }
     )
