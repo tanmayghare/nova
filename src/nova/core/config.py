@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
-
+import os
 
 class BrowserConfig(BaseModel):
     """Configuration for browser automation."""
@@ -11,29 +11,47 @@ class BrowserConfig(BaseModel):
         default=True,
         description="Whether to run in headless mode"
     )
-    timeout: int = Field(
-        default=30,
-        description="Default timeout in seconds"
+    action_timeout: float = Field(
+        default=10.0,
+        description="Default timeout for actions like click/type in seconds"
+    )
+    navigation_timeout: float = Field(
+        default=30.0,
+        description="Default timeout for page navigation in seconds"
+    )
+    wait_timeout: float = Field(
+        default=10.0,
+        description="Default timeout for explicit waits in seconds"
     )
     viewport: Dict[str, int] = Field(
-        default={"width": 1280, "height": 720},
+        default={
+            "width": int(os.environ.get("BROWSER_VIEWPORT_WIDTH", "1280")),
+            "height": int(os.environ.get("BROWSER_VIEWPORT_HEIGHT", "720"))
+        },
         description="Viewport dimensions"
     )
-    browser_args: List[str] = []
+    browser_args: List[str] = Field(
+        default=[],
+        description="Additional arguments to pass to the browser launch command"
+    )
+    user_agent: Optional[str] = Field(
+        default=None,
+        description="Custom user agent string"
+    )
 
 
 class NIMConfig(BaseModel):
     """Configuration for NVIDIA NIM."""
     docker_image: str = Field(
-        default="nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:latest",
+        default=os.environ.get("NIM_DOCKER_IMAGE"),
         description="Docker image for NIM service"
     )
     api_base: str = Field(
-        default="http://localhost:8000",
+        default=os.environ.get("NIM_API_BASE_URL"),
         description="Base URL for NIM API"
     )
     api_key: Optional[str] = Field(
-        default=None,
+        default=os.environ.get("NIM_API_KEY"),
         description="API key for NIM service"
     )
 
@@ -45,23 +63,23 @@ class LLMConfig(BaseModel):
         description="LLM provider to use (nim or ollama)"
     )
     model_name: str = Field(
-        default="nvidia/llama-3.3-nemotron-super-49b-v1",
+        default=os.environ.get("MODEL_NAME"),
         description="Name of the model to use"
     )
     temperature: float = Field(
-        default=0.2,
+        default=float(os.environ.get("MODEL_TEMPERATURE", 0.1)),
         description="Temperature for sampling"
     )
     max_tokens: int = Field(
-        default=4096,
+        default=int(os.environ.get("MODEL_MAX_TOKENS", 1500)),
         description="Maximum number of tokens to generate"
     )
     batch_size: int = Field(
-        default=4,
+        default=int(os.environ.get("MODEL_BATCH_SIZE", 1)),
         description="Maximum number of requests to process in parallel"
     )
     enable_streaming: bool = Field(
-        default=True,
+        default=os.environ.get("MODEL_ENABLE_STREAMING", "False").lower() == "true",
         description="Whether to enable response streaming"
     )
     nim_config: NIMConfig = Field(
@@ -101,6 +119,9 @@ class AgentConfig(BaseModel):
     max_iterations: int = 10
     max_history_context_iterations: int = 5
     confidence_threshold: float = 0.7
+    max_retries: int = 3
+    retry_delay: float = 2.0
+    max_tool_errors: int = 3
 
     class Config:
         extra = "allow" 

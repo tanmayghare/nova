@@ -1,16 +1,17 @@
 """NVIDIA NIM API integration."""
 
+import os
+import logging
+import re
 import json
 import commentjson
-import logging
-import os
-from typing import Any, Dict, List, Optional, AsyncIterator
-from datetime import datetime, timedelta
 import aiohttp
 import asyncio
+from typing import Any, Dict, List, Optional, AsyncIterator, Tuple
+from datetime import datetime, timedelta
+
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from pydantic import BaseModel, Field
-import re
 
 from .language_model import LanguageModel
 from .monitoring import PerformanceMonitor
@@ -24,43 +25,43 @@ monitor = PerformanceMonitor()
 class NIMConfig(BaseModel):
     """Configuration for NVIDIA NIM model."""
     docker_image: str = Field(
-        default="nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:latest",
+        default=os.environ.get("NIM_DOCKER_IMAGE"),
         description="Docker image for NIM service"
     )
     api_base: str = Field(
-        default="https://api.nvcf.nvidia.com/v2/nvcf",
+        default=os.environ.get("NIM_API_BASE_URL"),
         description="Base URL for NIM API"
     )
     model_name: str = Field(
-        default="nvidia/llama-3.3-nemotron-super-49b-v1",
+        default=os.environ.get("MODEL_NAME"),
         description="Name of the model to use"
     )
     temperature: float = Field(
-        default=0.1,
+        default=os.environ.get("MODEL_TEMPERATURE"),
         description="Temperature for sampling"
     )
     max_tokens: int = Field(
-        default=4096,
+        default=os.environ.get("MODEL_MAX_TOKENS"),
         description="Maximum number of tokens to generate"
     )
     top_p: float = Field(
-        default=0.9,
+        default=os.environ.get("MODEL_TOP_P"),
         description="Top-p sampling parameter"
     )
     top_k: int = Field(
-        default=50,
+        default=os.environ.get("MODEL_TOP_K"),
         description="Top-k sampling parameter"
     )
     repetition_penalty: float = Field(
-        default=1.1,
+        default=os.environ.get("MODEL_REPETITION_PENALTY"),
         description="Penalty for repeating tokens"
     )
     max_retries: int = Field(
-        default=3,
+        default=os.environ.get("MODEL_MAX_RETRIES"),
         description="Maximum number of retries for failed requests"
     )
     retry_delay: float = Field(
-        default=1.0,
+        default=os.environ.get("MODEL_RETRY_DELAY"),
         description="Initial delay between retries in seconds"
     )
 
@@ -69,18 +70,18 @@ class NIMProvider(LanguageModel):
 
     def __init__(
         self,
-        docker_image: str = "nvcr.io/nim/nvidia/llama-3.3-nemotron-super-49b-v1:latest",
-        api_base: str = "https://api.nvcf.nvidia.com/v2/nvcf",
-        model_name: str = "llama-3.3-nemotron-super-49b-v1",
-        temperature: float = 0.1,
-        max_tokens: int = 4096,
-        top_p: float = 0.9,
-        top_k: int = 50,
-        repetition_penalty: float = 1.1,
-        max_retries: int = 3,
-        retry_delay: float = 1.0,
-        batch_size: int = 4,
-        enable_streaming: bool = True,
+        docker_image: str = os.environ.get("NIM_DOCKER_IMAGE"),
+        api_base: str = os.environ.get("NIM_API_BASE_URL"),
+        model_name: str = os.environ.get("MODEL_NAME"),
+        temperature: float = os.environ.get("MODEL_TEMPERATURE"),
+        max_tokens: int = os.environ.get("MODEL_MAX_TOKENS"),
+        top_p: float = os.environ.get("MODEL_TOP_P"),
+        top_k: int = os.environ.get("MODEL_TOP_K"),
+        repetition_penalty: float = os.environ.get("MODEL_REPETITION_PENALTY"),
+        max_retries: int = os.environ.get("MODEL_MAX_RETRIES"),
+        retry_delay: float = os.environ.get("MODEL_RETRY_DELAY"),
+        batch_size: int = os.environ.get("MODEL_BATCH_SIZE"),
+        enable_streaming: bool = os.environ.get("MODEL_ENABLE_STREAMING"),
     ) -> None:
         """Initialize the NIM provider.
         
@@ -254,6 +255,7 @@ Your goal is to generate a plan to accomplish the given task based on the curren
         - **If the last observation status was 'low_confidence_retry':** Re-evaluate the goal using the potentially added 'Extended Context (Full HTML)' and propose a higher-confidence action or `finish`.
         - **Otherwise (success or first step):** Determine the single best next step towards the `Task` goal based on the current page structure and history.
     - If the overall task goal is achieved according to the history and current page state, explain why and use the 'finish' tool.
+    **Important: Do not use backticks (`) within the 'thought' string.**
 2.  **Confidence Score:** Provide a numerical score (0.0 to 1.0) indicating your confidence that the proposed action is correct and will succeed towards the goal. 
     - Base confidence on: clarity of the goal, uniqueness/reliability of selectors (if applicable), consistency with history, likelihood of achieving the task objective with this step.
     - Use lower scores if selectors are ambiguous, the action seems risky, or the goal is unclear.
@@ -281,7 +283,7 @@ Your final output **must** be a valid JSON object containing three keys: 'though
 Example (Action Step):
 ```json
 {{
-  "thought": "The task is to click the login button. Looking at the `Current Page Structure (After Previous Action)`, I see a button with `text: 'Login'` and a unique `id: 'login-btn'`. This seems unambiguous.",
+  "thought": "The task is to click the login button. Looking at the 'Current Page Structure (After Previous Action)', I see a button with text: 'Login' and a unique id: 'login-btn'. This seems unambiguous.",
   "confidence": 0.95,
   "plan": [
     {{"tool": "click", "input": {{"selector": "#login-btn"}}}}
@@ -292,7 +294,7 @@ Example (Action Step):
 Example (Corrective Step after Error):
 ```json
 {{
-  "thought": "The previous action `click` with selector '#submit' failed with error 'Timeout waiting for element'. The current page structure still shows the button exists. I will try waiting for the element to be clickable first, then click again.",
+  "thought": "The previous action 'click' with selector '#submit' failed with error 'Timeout waiting for element'. The current page structure still shows the button exists. I will try waiting for the element to be clickable first, then click again.",
   "confidence": 0.8,
   "plan": [
     {{"tool": "wait", "input": {{"selector": "#submit", "timeout": 15}}}}
@@ -339,103 +341,90 @@ Generate the thought, confidence score, and the single next step (or finish acti
     # def _parse_plan_response(self, response: Dict[str, Any]) -> List[Dict[str, Any]]: ...
 
     # --- Add new parsing method for Thought/Plan JSON ---
-    def _parse_thought_plan_response(self, response_text: str) -> tuple[str, float, List[Dict[str, Any]]]:
-        """Parse the LLM response expecting {'thought': ..., 'confidence': ..., 'plan': [...]} JSON.
-           Extracts the JSON object robustly, handling surrounding text and markdown fences.
-        """
-        logger.debug(f"Attempting to parse thought/plan response (len={len(response_text)} chars)")
-        plan_json_str = None
+    def _parse_thought_plan_response(self, response: str) -> Tuple[str, float, List[Dict[str, Any]]]:
+        """Parse the LLM's response into thought, confidence, and plan steps."""
+        json_str = None
         cleaned_json_str = None
+        logger.debug(f"Attempting to parse raw response (len={len(response)}): {response[:500]}...")
         try:
-            # --- Try to extract the LAST ```json block ---
-            last_marker_index = response_text.rfind('```json')
-            if last_marker_index != -1:
-                start_after_marker = last_marker_index + len('```json')
-                end_marker_index = response_text.find('```', start_after_marker)
-                if end_marker_index != -1:
-                    plan_json_str = response_text[start_after_marker:end_marker_index].strip()
-                    logger.debug(f"Extracted potential JSON from last ```json block.")
-                else:
-                    # If opening ```json found but no closing ```, maybe it runs to the end?
-                    plan_json_str = response_text[start_after_marker:].strip()
-                    logger.warning("Found ```json marker but no closing ```. Using text until end.")
-            
-            # --- Fallback: Try finding last { ... } block if ```json failed ---
-            if not plan_json_str or not plan_json_str.startswith('{'):
-                logger.debug("No valid JSON found in ```json block, trying last { ... } block as fallback.")
-                last_start_index = response_text.rfind('{')
-                last_end_index = -1
-                if last_start_index != -1:
-                    # Find the last '}' *after* the last '{'.
-                    last_end_index = response_text.rfind('}', last_start_index)
-                
-                if last_start_index != -1 and last_end_index != -1 and last_end_index > last_start_index:
-                    plan_json_str = response_text[last_start_index : last_end_index + 1].strip()
-                    logger.debug(f"Extracted potential JSON based on last {{ and last }} as fallback.")
-                else:
-                    plan_json_str = None # Ensure it's None if fallback also fails
-            
-            # --- Final Check ---
-            if not plan_json_str or not plan_json_str.strip().startswith('{'):
-                raise ValueError("Could not find a plausible JSON object block (```json or { ... }) in the response text.")
-            
-            # --- Cleaning Step ---
-            # Remove backticks before parsing
-            cleaned_json_str = plan_json_str.replace('`', '')
-            logger.debug(f"Cleaned JSON string (removed backticks): {cleaned_json_str[:500]}...")
-
-            # --- Parsing Step ---
-            logger.debug(f"Attempting to parse cleaned string using commentjson: {cleaned_json_str[:500]}...")
-            parsed_data = commentjson.loads(cleaned_json_str)
-            # ----------------------------------------------------------------
-
-            if not isinstance(parsed_data, dict):
-                raise ValueError("Parsed JSON is not a dictionary")
-
-            # Extract thought, confidence, and plan
-            thought = parsed_data.get("thought", "") 
-            plan_steps = parsed_data.get("plan", []) 
-            confidence = 0.0 # Default confidence
-            raw_confidence = parsed_data.get("confidence")
-            if isinstance(raw_confidence, (float, int)):
-                confidence = max(0.0, min(1.0, float(raw_confidence))) # Clamp between 0.0 and 1.0
-            elif isinstance(raw_confidence, str):
-                try:
-                    confidence = max(0.0, min(1.0, float(raw_confidence)))
-                except ValueError:
-                    logger.warning(f"Could not parse confidence score string: '{raw_confidence}'. Defaulting to 0.0.")
-            elif raw_confidence is not None:
-                 logger.warning(f"Unexpected type for confidence score: {type(raw_confidence)}. Defaulting to 0.0.")
-
-            if not isinstance(plan_steps, list):
-                raise ValueError("The 'plan' field must contain a list of steps")
-            
-            # Basic validation of steps (can be enhanced later)
-            valid_steps = []
-            for step in plan_steps:
-                if isinstance(step, dict) and "tool" in step:
-                    valid_steps.append({
-                        "tool": step.get("tool"),
-                        "input": step.get("input", {})
-                    })
-                else:
-                    logger.warning(f"Skipping invalid step format in plan: {step}")
-            
-            logger.info(f"Successfully parsed thought, confidence={confidence:.2f}, and {len(valid_steps)} plan steps.")
-            # Return tuple with confidence score
-            return thought, confidence, valid_steps
-
-        except (commentjson.JSONLibraryException, ValueError, TypeError) as e:
-            logger.error(f"Failed to parse thought/plan JSON: {e}", exc_info=True)
-            # Log the string that was *attempted* to be parsed (cleaned version)
-            if 'cleaned_json_str' in locals():
-                logger.error(f"String attempted for parsing (after cleaning): {cleaned_json_str}")
-            elif plan_json_str is not None:
-                 logger.error(f"String attempted for parsing (before cleaning): {plan_json_str}")
+            # Priority 1: Look for ```json ... ``` block
+            json_block_match = re.search(r"```json\s*(.*?)\s*```", response, re.DOTALL)
+            if json_block_match:
+                json_str = json_block_match.group(1).strip()
+                logger.debug("Extracted JSON using ```json block.")
             else:
-                logger.error(f"Full response text (extraction might have failed earlier): {response_text}")
-            return "", 0.0, []
-    # --- End new parsing method ---
+                # Priority 2: Look for the first generic { ... } block
+                start_idx = response.find('{')
+                end_idx = response.rfind('}') + 1
+                if start_idx != -1 and end_idx != 0:
+                    json_str = response[start_idx:end_idx]
+                    logger.debug("Extracted JSON using generic {.*?} block.")
+                else:
+                    raise ValueError("No JSON object delimiters ('{' or '```json') found in response text.")
+            
+            logger.debug(f"Extracted JSON string: {json_str[:500]}...")
+
+            # Clean up any potential *leading/trailing* whitespace or common LLM artifacts *before* parsing
+            # and replace backticks that might confuse commentjson within strings.
+            cleaned_json_str = json_str.strip()
+            cleaned_json_str = cleaned_json_str.replace('\\`', "'") # Corrected: Replace literal backticks with single quotes
+            logger.debug(f"Cleaned JSON string (backticks replaced): {cleaned_json_str[:500]}...")
+            
+            # Use commentjson.loads
+            parsed_data = commentjson.loads(cleaned_json_str)
+            
+            # --- Validation --- (Keep existing validation)
+            if not isinstance(parsed_data, dict):
+                 raise ValueError("Parsed JSON is not a dictionary")
+            
+            # ... (rest of the validation for thought, confidence, plan) ...
+            thought = parsed_data.get("thought", "")
+            confidence = 0.0
+            raw_confidence = parsed_data.get("confidence")
+            # ... (confidence parsing logic) ...
+            
+            plan_steps_raw = parsed_data.get("plan", [])
+            if not isinstance(plan_steps_raw, list):
+                raise ValueError("Parsed 'plan' field is not a list.")
+
+            plan_steps = []
+            allowed_tools = ['navigate', 'click', 'type', 'wait', 'screenshot', 'finish'] # Ensure finish is allowed
+            for step in plan_steps_raw:
+                 if not isinstance(step, dict) or 'tool' not in step:
+                     logger.warning(f"Skipping invalid step format or missing tool: {step}")
+                     continue
+                     
+                 tool = step['tool']
+                 if tool not in allowed_tools:
+                     logger.warning(f"Skipping step with invalid tool '{tool}': {step}")
+                     continue
+                     
+                 plan_steps.append({
+                     'tool': tool,
+                     'input': step.get('input', {}) # Allow empty input
+                 })
+            
+            logger.info(f"Successfully parsed: thought='{thought[:50]}...', confidence={confidence:.2f}, steps={len(plan_steps)}")
+            return thought, confidence, plan_steps
+
+        # Catch commentjson exceptions and other errors
+        except (commentjson.JSONLibraryException, ValueError, TypeError) as e:
+            logger.error(f"Failed to parse thought/plan JSON with commentjson: {e}", exc_info=True)
+            logger.error(f"Raw response received: {response}")
+            if cleaned_json_str is not None:
+                 logger.error(f"Attempted JSON string (after cleaning): {cleaned_json_str}")
+            elif json_str is not None:
+                 logger.error(f"Attempted JSON string (before cleaning): {json_str}")
+            # Re-raise a ValueError consistent with previous error handling
+            raise ValueError(f"Failed to parse LLM response JSON: {str(e)}")
+        except Exception as e:
+            # Catch other potential errors during extraction/parsing/validation
+            logger.error(f"Unexpected error parsing thought/plan response: {e}", exc_info=True)
+            logger.error(f"Raw response received: {response}")
+            # Re-raise a ValueError consistent with previous error handling
+            raise ValueError(f"Failed to parse LLM response: {str(e)}")
+            
+    # --- End parsing method ---
 
     async def generate_response(self, task: str, plan: List[Dict[str, Any]], context: str) -> str:
         # ... (This method likely needs updating later too, but focus on generate_plan now) ...
@@ -549,4 +538,89 @@ Please provide a summary of the task execution results.
     def reset_token_count(self) -> None:
         """Reset the token count."""
         self._token_count = 0
-        self._last_token_reset = datetime.now() 
+        self._last_token_reset = datetime.now()
+
+    async def interpret_command(self, command: str) -> Dict[str, Any]:
+        """Interpret a natural language command into a structured plan."""
+        prompt = f"""Interpret the following command into a structured plan:
+Command: {command}
+
+CRITICAL: Your output MUST be ONLY the JSON object, starting with `{{` and ending with `}}`. 
+Do NOT include ```json fences, explanations, apologies, or any other text before or after the JSON object.
+
+The JSON object must have the following keys:
+- "goal": (String) The overall goal derived from the command.
+- "entities": (List of Strings) Key entities extracted from the command.
+- "plan": (List of Objects) A sequence of tool actions to execute. Each action object must have:
+  - "action": (String) The type of action (MUST be one of: 'navigate', 'click', 'type', 'wait', 'screenshot').
+  - "parameters": (Object) Parameters specific to the action (e.g., {{"url": "..."}} for navigate, {{"selector": "...", "text": "..."}} for type).
+  - "reasoning": (String) A brief explanation of why this specific action step is needed to achieve the goal.
+
+Example JSON Output:
+{{
+  "goal": "Find information about Python web frameworks",
+  "entities": ["Python", "web frameworks"],
+  "plan": [
+    {{
+      "action": "navigate",
+      "parameters": {{"url": "https://www.google.com"}},
+      "reasoning": "Need to start at a search engine to find information"
+    }},
+    {{
+      "action": "type",
+      "parameters": {{"selector": "textarea[name='q']", "text": "Python web frameworks"}},
+      "reasoning": "Enter the search query into the search bar"
+    }},
+    {{
+       "action": "click",
+       "parameters": {{"selector": "input[name='btnK']"}},
+       "reasoning": "Click the search button to submit the query"
+    }}
+  ]
+}}
+
+Now, interpret the command: '{command}' and provide ONLY the JSON object."""
+        
+        response_text = "" # Initialize in case generate fails
+        json_str = None # Initialize
+        try:
+            logger.info(f"Generating interpretation for command: '{command}'")
+            response_text = await self.generate(prompt) # Use self.generate
+
+            # Extract JSON from response_text (reuse extraction logic)
+            json_block_match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
+            if json_block_match:
+                json_str = json_block_match.group(1).strip()
+            else:
+                start_idx = response_text.find('{')
+                end_idx = response_text.rfind('}') + 1
+                if start_idx != -1 and end_idx != 0:
+                    json_str = response_text[start_idx:end_idx].strip()
+            
+            if not json_str:
+                raise ValueError("No JSON object found in LLM interpretation response.")
+
+            logger.debug(f"Extracted interpretation JSON string: {json_str[:500]}...")
+            
+            # Use commentjson.loads
+            parsed_interpretation = commentjson.loads(json_str)
+
+            # --- Validation --- (Keep existing validation)
+            if not isinstance(parsed_interpretation, dict):
+                raise ValueError("Interpreted plan is not a dictionary.")
+            # ... (rest of validation for goal, entities, plan) ...
+
+            logger.info(f"Successfully interpreted command into plan.")
+            return parsed_interpretation
+
+        # Catch commentjson exceptions and other errors
+        except (commentjson.JSONLibraryException, ValueError, TypeError) as e:
+            logger.error(f"Failed to parse interpreted plan JSON with commentjson: {e}")
+            logger.error(f"Raw LLM response was: {response_text}") # Use response_text here
+            if json_str:
+                 logger.error(f"Attempted JSON string: {json_str}")
+            raise ValueError(f"Failed to decode/validate interpreted plan JSON: {str(e)}") from e
+        except Exception as e:
+            logger.error(f"Unexpected error generating or parsing interpreted plan: {e}", exc_info=True)
+            logger.error(f"Raw LLM response was: {response_text}") # Use response_text here
+            raise ValueError(f"Unexpected error interpreting command: {str(e)}") from e 

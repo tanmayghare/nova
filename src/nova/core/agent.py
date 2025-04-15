@@ -188,32 +188,24 @@ class Agent:
 
     async def start(self) -> None:
         """Start the agent and its browser pool."""
-        if self.browser:
-            await self.browser.start()
+        # Remove direct browser start logic, only manage the pool
+        if not self.browser_pool.started:
+             logger.debug("Starting browser pool...")
+             await self.browser_pool.start()
+             logger.info("Browser pool started.")
         else:
-            if self.browser_pool.started:
-                logger.warning("Browser pool already started")
-                return
-            await self.browser_pool.start()
+             logger.warning("Agent.start() called but browser pool already started.")
         self.monitor.start()
 
     async def stop(self) -> None:
-        """Stop the agent and associated browser resources (direct or pool)."""
-        # Stop direct browser if it exists
-        if self.browser:
-            logger.debug("Stopping direct browser instance.")
-            await self.browser.stop()
-            # We might not need to stop the pool if direct browser was used exclusively
-            # but stopping it safely if it was started doesn't hurt.
-            # Alternatively, only stop the pool if self.browser was None initially.
-        
-        # Stop the pool if it was started (and potentially not stopped by direct browser cleanup)
+        """Stop the agent and associated browser resources (pool)."""
+        # Remove direct browser stop logic, only manage the pool
         if self.browser_pool.started:
-            logger.debug("Stopping browser pool.")
+            logger.debug("Stopping browser pool...")
             await self.browser_pool.stop()
+            logger.info("Browser pool stopped.")
         else:
-            # Log if pool wasn't started (matches warning seen in logs)
-            logger.warning("Agent stop: Browser pool was not started or already stopped.")
+            logger.warning("Agent.stop() called but browser pool was not started or already stopped.")
             
         # Stop monitor regardless
         self.monitor.stop()
@@ -225,7 +217,7 @@ class Agent:
                 try:
                     await task
                 except asyncio.CancelledError:
-                    pass
+                    logger.debug(f"Cancelled active task {task_id}")
         self.active_tasks.clear()
 
     async def run(self, task: str, task_id: Optional[str] = None) -> str:
@@ -248,20 +240,22 @@ class Agent:
             
         browser_for_task = None # Initialize variable
         try:
-            await self.start() # Starts pool if not started
-
             # --- Acquire browser from pool and register tools --- 
-            if not self.browser: # Only acquire if no direct browser was set
-                 logger.debug(f"Task {task_id} acquiring browser from pool...")
-                 browser_for_task = await self.browser_pool.acquire()
-                 if browser_for_task:
-                      self.browser = browser_for_task # This setter registers browser tools
-                      logger.info(f"Task {task_id} acquired browser from pool and registered tools.")
-                 else:
-                      logger.error(f"Task {task_id} failed to acquire browser from pool.")
-                      raise RuntimeError("Failed to acquire browser for task execution.")
+            # Ensure pool is started before acquiring (should be started by main)
+            if not self.browser_pool.started:
+                 logger.error("Agent.run() called but browser pool is not started. Call agent.start() first.")
+                 raise RuntimeError("Browser pool not started. Call agent.start() before running tasks.")
+                 
+            logger.debug(f"Task {task_id} acquiring browser from pool...")
+            browser_for_task = await self.browser_pool.acquire()
+            if browser_for_task:
+                 # Temporarily set self.browser for the duration of this task
+                 # This allows _execute_task to use it and registers tools
+                 self._register_browser_tools(browser_for_task)
+                 logger.info(f"Task {task_id} acquired browser {id(browser_for_task)} from pool and registered tools.")
             else:
-                 logger.debug(f"Task {task_id} using pre-set browser instance.")
+                 logger.error(f"Task {task_id} failed to acquire browser from pool.")
+                 raise RuntimeError("Failed to acquire browser for task execution.")
             # ---------------------------------------------------
 
             # Convert string task to dictionary with description
@@ -271,41 +265,31 @@ class Agent:
                 "created_at": datetime.now().isoformat()
             }
             
-            # Create and track the task
-            task_obj = asyncio.create_task(self._execute_task(task_dict, task_id))
+            # Create and track the task, passing the acquired browser
+            task_obj = asyncio.create_task(self._execute_task(task_dict, task_id, browser_for_task))
             self.active_tasks[task_id] = task_obj
             
             logger.debug(f"Agent.run awaiting task {task_id} completion...")
             result = await task_obj
-            logger.debug(f"Agent.run task {task_id} completed. Preparing to return result.")
-            
-            # --- Add Log Before Return --- 
-            logger.info(f"Agent.run returning result for task {task_id}: {str(result)[:200]}...") 
+            logger.debug(f"Agent.run received result for task {task_id}")
             return result
-            
         except Exception as e:
-            logger.error(f"Task execution failed in Agent.run: {e}", exc_info=True)
-            # Ensure failed tasks also return a dict, or handle appropriately
-            # Depending on desired behavior, re-raise or return specific error structure
-            raise # Re-raise for now to ensure visibility
+             logger.error(f"Error during Agent.run for task {task_id}: {e}", exc_info=True)
+             raise # Re-raise the exception after logging
         finally:
-            # --- Add Log in Finally --- 
-            logger.info(f"Agent.run entering finally block for task {task_id}")
-            self.active_tasks.pop(task_id, None)
-            try:
-                # --- Release browser back to pool if acquired --- 
-                if browser_for_task:
-                     logger.debug(f"Task {task_id} releasing browser back to pool.")
-                     await self.browser_pool.release(browser_for_task)
-                     # Important: Clear self.browser if it was set by this task
-                     # to avoid interfering with other tasks or agent state.
-                     # Only clear if the released browser is the one currently set.
-                     if self.browser == browser_for_task:
-                          self.browser = None
-                # ---------------------------------------------------
-                await self.cleanup()
-            except Exception as e:
-                logger.error(f"Cleanup failed in Agent.run finally block: {e}", exc_info=True)
+            logger.debug(f"Agent.run entering finally block for task {task_id}")
+            # Clean up task tracking
+            if task_id in self.active_tasks:
+                 del self.active_tasks[task_id]
+                 
+            # --- Release browser back to pool --- 
+            if browser_for_task:
+                 logger.debug(f"Task {task_id} releasing browser {id(browser_for_task)} back to pool.")
+                 await self.browser_pool.release(browser_for_task)
+                 # Unset self.browser to avoid interfering with other tasks/methods
+                 # self.browser = None # Maybe not necessary if _execute_task doesn't rely on self.browser
+            # -------------------------------------
+            logger.debug(f"Agent.run finished for task {task_id}")
 
     async def run_batch(self, tasks: List[str]) -> Dict[str, str]:
         """Run multiple tasks in parallel.
@@ -345,7 +329,12 @@ class Agent:
             
         return results
 
-    async def _execute_task(self, task: Dict[str, Any], task_id: str) -> Dict[str, Any]:
+    async def _execute_task(
+        self,
+        task: Dict[str, Any], 
+        task_id: str,
+        browser: Browser # Receive the acquired browser as an argument
+    ) -> Dict[str, Any]:
         """Execute a single task using a ReAct loop."""
         # --- Interaction Logging Setup ---
         logger_instance = getattr(self, 'interaction_logger', None)
@@ -592,7 +581,7 @@ class Agent:
                         extra_context_for_next_llm = None # Clear any fallback context on success
                         try:
                             logger.debug("Getting DOM structure after successful action...")
-                            dom_structure = await self._get_structured_dom()
+                            dom_structure = await self._get_structured_dom(browser)
                             dom_context_str = json.dumps(dom_structure, indent=2)
                             logger.debug("DOM structure updated for next context.")
                         except Exception as dom_e:
@@ -694,7 +683,7 @@ class Agent:
                         # --- Capture DOM state AFTER error --- 
                         logger.info(f"Task {task_id} - Capturing DOM state after tool execution failure.")
                         try:
-                            dom_structure_after_error = await self._get_structured_dom()
+                            dom_structure_after_error = await self._get_structured_dom(browser)
                             dom_context_str = json.dumps(dom_structure_after_error, indent=2)
                             logger.debug("DOM structure updated after error for next context.")
                         except Exception as dom_err_after_fail:
@@ -798,7 +787,11 @@ class Agent:
             raise
 
     async def cleanup(self) -> None:
-        """Clean up resources."""
+        """Clean up resources.
+        
+        Note: The `close()` method is deprecated and will be removed in a future version.
+        Please use `cleanup()` instead.
+        """
         if self.browser:
             await self.browser.stop()
         else:
@@ -806,25 +799,30 @@ class Agent:
         self.monitor.stop()
 
     def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get current performance metrics.
-        
-        Returns:
-            Dictionary containing performance metrics
-        """
+        """Get performance metrics for the agent."""
         return self.monitor.get_metrics()
 
     # --- Add Method to Extract Structured DOM --- 
-    async def _get_structured_dom(self, max_elements: int = 100) -> List[Dict[str, Any]]:
-        """Extract structured information about interactive elements from the current page."""
-        if not self.browser or not hasattr(self.browser, '_page') or not self.browser._page:
-            logger.warning("Cannot get structured DOM: Browser or _page not available.")
-            return []
+    async def _get_structured_dom(self, browser: Browser, max_elements: int = 100) -> List[Dict[str, Any]]:
+        """Retrieve a structured representation of the current DOM from the browser.
 
-        page = self.browser._page
-        structured_elements = []
-        kept_attributes = ['id', 'name', 'class', 'type', 'placeholder', 'aria-label', 'role', 'href', 'alt', 'title']
+        Args:
+            browser: The browser instance to query.
+            max_elements: Maximum number of interactive elements to include.
 
+        Returns:
+            List of dictionaries, each representing an interactive element.
+        """
         try:
+            # Ensure the browser is valid
+            if not browser or not browser._page:
+                logger.warning("Browser or page not available for DOM extraction.")
+                return []
+
+            page = browser._page
+            structured_elements = []
+            kept_attributes = ['id', 'name', 'class', 'type', 'placeholder', 'aria-label', 'role', 'href', 'alt', 'title']
+
             # Query for potentially interactive elements
             # Expand selectors as needed
             selectors = 'a, button, input, textarea, select, [role="button"], [role="link"], [role="textbox"], [role="menuitem"]'
@@ -914,3 +912,128 @@ class Agent:
             )
         return "\n".join(formatted_examples)
     # +++ END RAG Formatting Helper Method +++
+
+    async def _execute_interpreted_plan(self, task: str) -> Dict[str, Any]:
+        """Execute a task using an interpreted plan from the LLM.
+        
+        Args:
+            task: The natural language task to execute
+            
+        Returns:
+            Dictionary containing:
+            - status: 'success' or 'error'
+            - result: The final result if successful
+            - error: Error message if failed
+            - steps: List of executed steps
+        """
+        browser = None # Initialize
+        try:
+            # Acquire browser from pool (ensure pool is started beforehand)
+            if not self.browser_pool.started:
+                 logger.error("_execute_interpreted_plan called but browser pool is not started.")
+                 raise RuntimeError("Browser pool not started. Call agent.start() first.")
+                 
+            browser = await self.browser_pool.acquire()
+            if not browser:
+                 logger.error("Failed to acquire browser from pool for interpreted plan.")
+                 raise RuntimeError("Failed to acquire browser from pool for interpreted plan")
+                 
+            logger.info(f"Acquired browser {id(browser)} for interpreted plan.")
+            
+            # Start performance monitoring
+            self.monitor.start()
+            
+            try:
+                # Interpret the command into a structured plan
+                plan = await self.llm.interpret_command(task)
+                logger.info(f"Interpreted plan: {json.dumps(plan, indent=2)}")
+                
+                # Initialize result tracking
+                result = {
+                    'status': 'success',
+                    'result': None,
+                    'error': None,
+                    'steps': []
+                }
+                
+                # Execute each step in the plan using the acquired browser
+                for step in plan['plan']:
+                    step_result = {
+                        'action': step['action'],
+                        'parameters': step['parameters'],
+                        'reasoning': step['reasoning'],
+                        'status': 'success',
+                        'result': None,
+                        'error': None
+                    }
+                    
+                    try:
+                        # Execute the action based on its type
+                        if step['action'] == 'navigate':
+                            await browser.navigate(step['parameters']['url'])
+                            step_result['result'] = f"Navigated to {step['parameters']['url']}"
+                            
+                        elif step['action'] == 'click':
+                            await browser.click(step['parameters']['selector'])
+                            step_result['result'] = f"Clicked element: {step['parameters']['selector']}"
+                            
+                        elif step['action'] == 'type':
+                            await browser.type(step['parameters']['selector'], 
+                                            step['parameters']['text'])
+                            step_result['result'] = f"Typed '{step['parameters']['text']}' into {step['parameters']['selector']}"
+                            
+                        elif step['action'] == 'wait':
+                            await browser.wait(step['parameters']['selector'],
+                                            timeout=step['parameters'].get('timeout', 10))
+                            step_result['result'] = f"Waited for element: {step['parameters']['selector']}"
+                            
+                        elif step['action'] == 'screenshot':
+                            path = step['parameters']['path']
+                            await browser.screenshot(path)
+                            step_result['result'] = f"Saved screenshot to {path}"
+                            
+                        else:
+                            raise ValueError(f"Unknown action type: {step['action']}")
+                            
+                    except Exception as e:
+                        step_result['status'] = 'error'
+                        step_result['error'] = str(e)
+                        result['status'] = 'error'
+                        result['error'] = str(e)
+                        break
+                        
+                    result['steps'].append(step_result)
+                    
+                # If all steps completed successfully, get the final result
+                if result['status'] == 'success':
+                    # Use the acquired browser instance
+                    result['result'] = await browser.get_html_source() # Or get_page_content if defined
+                    
+                return result
+                
+            finally:
+                # Stop performance monitoring first
+                self.monitor.stop()
+                # Release browser back to pool
+                if browser:
+                    logger.info(f"Releasing browser {id(browser)} after interpreted plan.")
+                    await self.browser_pool.release(browser)
+                
+        except Exception as e:
+            logger.error(f"Error executing interpreted plan: {e}", exc_info=True)
+            # Ensure browser is released even on error
+            if browser:
+                try:
+                    await self.browser_pool.release(browser)
+                except Exception as release_error:
+                     logger.error(f"Error releasing browser after interpreted plan failure: {release_error}", exc_info=True)
+            return {
+                'status': 'error',
+                'result': None,
+                'error': str(e),
+                'steps': []
+            }
+
+    def __str__(self) -> str:
+        # Implement the __str__ method to provide a string representation of the agent
+        return f"Agent(llm={self.llm}, tools={self.tools}, memory={self.memory}, config={self.config}, browser_pool={self.browser_pool}, max_parallel_tasks={self.max_parallel_tasks}, enable_rag={self.enable_rag})"
