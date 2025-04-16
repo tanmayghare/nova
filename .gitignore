@@ -71,3 +71,6 @@ logs/
 
 #DB
 db/
+
+#Data
+data/
