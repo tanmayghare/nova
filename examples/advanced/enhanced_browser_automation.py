@@ -28,9 +28,12 @@ async def main():
         ),
         browser_config=BrowserConfig(
             headless=False,
-            viewport={"width": os.environ.get("BROWSER_VIEWPORT_WIDTH"), "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT")},
+            viewport={
+                "width": os.environ.get("BROWSER_VIEWPORT_WIDTH"),
+                "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT"),
+            },
             highlight_elements=True,
-            slow_motion=0
+            slow_motion=0,
         )
     )
     

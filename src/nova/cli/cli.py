@@ -1,9 +1,9 @@
 """Main CLI entrypoint for Nova."""
 
+import sys
 import argparse
 import asyncio
 import logging
-import sys
 from typing import List, Optional
 
 from nova.cli.commands import (

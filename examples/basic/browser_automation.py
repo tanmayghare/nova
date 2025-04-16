@@ -28,16 +28,19 @@ async def main():
     # Create configurations
     config = AgentConfig(
         max_steps=int(os.getenv("AGENT_MAX_STEPS", "10")),
-        temperature=float(os.getenv("AGENT_TEMPERATURE", "0.7")),
+        temperature=float(os.getenv("AGENT_TEMPERATURE", "0.1")),
     )
     
     # Configure browser to run in headed mode for visualization
     browser_config = BrowserConfig(
         headless=False,  # Show the browser window
         timeout=int(os.getenv("BROWSER_TIMEOUT", "30000")),
-        viewport={"width": os.environ.get("BROWSER_VIEWPORT_WIDTH"), "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT")},  # Set a reasonable window size
+        viewport={
+            "width": os.environ.get("BROWSER_VIEWPORT_WIDTH"),
+            "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT"),
+        },  # Set a reasonable window size
     )
-    
+
     # Create agent
     agent = Agent(
         llm=llm,

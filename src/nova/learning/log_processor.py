@@ -5,8 +5,8 @@ sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 # -------------------------------------------
 
 import os
-import json
 import logging
+import json
 import chromadb
 from sentence_transformers import SentenceTransformer
 
@@ -14,7 +14,7 @@ from sentence_transformers import SentenceTransformer
 LOG_FILE_PATH = "logs/interaction_log.jsonl"
 DB_PATH = "db/chroma_db"
 COLLECTION_NAME = "interaction_history"
-EMBEDDING_MODEL_NAME = 'all-MiniLM-L6-v2' # A good default choice
+EMBEDDING_MODEL_NAME = 'all-MiniLM-L6-v2'
 
 # Ensure DB directory exists
 os.makedirs(DB_PATH, exist_ok=True)

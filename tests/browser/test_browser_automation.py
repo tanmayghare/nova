@@ -1,7 +1,8 @@
+import os
 import asyncio
 import logging
 import subprocess
-import os
+
 from nova.core.agent import Agent
 from nova.core.config import AgentConfig, BrowserConfig
 from nova.core.llm import LLM
@@ -35,9 +36,12 @@ class BrowserAutomation:
         browser_config = BrowserConfig(
             headless=True,  # Run in headless mode
             timeout=30,
-            viewport={"width": os.environ.get("BROWSER_VIEWPORT_WIDTH"), "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT")}
+            viewport={
+                "width": os.environ.get("BROWSER_VIEWPORT_WIDTH"),
+                "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT"),
+            },
         )
-        
+
         # Create agent
         self.agent = Agent(
             llm=llm,

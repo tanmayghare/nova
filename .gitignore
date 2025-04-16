@@ -70,4 +70,4 @@ outputs/
 logs/
 
 #DB
-db/chroma_db/
+db/

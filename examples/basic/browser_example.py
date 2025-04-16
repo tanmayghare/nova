@@ -1,5 +1,6 @@
-import asyncio
 import os
+import asyncio
+
 from nova.browser import Browser, BrowserConfig
 
 
@@ -8,7 +9,10 @@ async def main() -> None:
     # Create a browser instance with custom configuration
     config = BrowserConfig(
         headless=False,  # Show the browser window
-        viewport={"width": os.environ.get("BROWSER_VIEWPORT_WIDTH"), "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT")},
+        viewport={
+            "width": os.environ.get("BROWSER_VIEWPORT_WIDTH"),
+            "height": os.environ.get("BROWSER_VIEWPORT_HEIGHT"),
+        },
     )
     browser = Browser(config)
 

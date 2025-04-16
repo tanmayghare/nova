@@ -1,7 +1,7 @@
-import json
+import os
 import datetime
 import uuid
-import os
+import json
 
 class InteractionLogger:
     """Handles logging of agent interactions to a file."""
@@ -88,6 +88,3 @@ class InteractionLogger:
             print(f"Error reading/writing log file {self.log_file_path} during outcome update: {e}")
         except Exception as e: # Catch broader errors during file operations
             print(f"An unexpected error occurred during outcome update: {e}")
-
-# Example Usage (can be removed or placed in a separate test script)
-# Removed the example usage block 

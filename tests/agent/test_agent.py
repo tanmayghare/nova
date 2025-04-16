@@ -1,10 +1,6 @@
 import pytest
-from typing import Any, Dict, Sequence, List
+from typing import Any, Dict, Sequence
 from unittest.mock import AsyncMock, MagicMock
-from collections import deque
-import base64
-import json
-from datetime import datetime
 from pytest_mock import MockerFixture
 
 from nova.agent.agent import Agent
