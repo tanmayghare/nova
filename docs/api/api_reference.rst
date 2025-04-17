@@ -4,18 +4,34 @@ API Reference
 Core Classes
 -----------
 
-Agent
-~~~~~
+BaseAgent
+~~~~~~~~~
 
-.. autoclass:: nova.Agent
+.. autoclass:: nova.core.base_agent.BaseAgent
    :members:
    :undoc-members:
    :show-inheritance:
 
-AgentConfig
-~~~~~~~~~~
+TaskAgent
+~~~~~~~~~
 
-.. autoclass:: nova.AgentConfig
+.. autoclass:: nova.agents.task.task_agent.TaskAgent
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+LLM
+~~~
+
+.. autoclass:: nova.core.llm.LLM
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+LLMConfig
+~~~~~~~~~
+
+.. autoclass:: nova.core.config.LLMConfig
    :members:
    :undoc-members:
    :show-inheritance:
@@ -23,15 +39,15 @@ AgentConfig
 Browser
 ~~~~~~~
 
-.. autoclass:: nova.Browser
+.. autoclass:: nova.core.browser.Browser
    :members:
    :undoc-members:
    :show-inheritance:
 
-BrowserConfig
-~~~~~~~~~~~~
+BrowserTools
+~~~~~~~~~~~
 
-.. autoclass:: nova.BrowserConfig
+.. autoclass:: nova.tools.browser_tools.BrowserTools
    :members:
    :undoc-members:
    :show-inheritance:
@@ -39,7 +55,15 @@ BrowserConfig
 Memory
 ~~~~~~
 
-.. autoclass:: nova.Memory
+.. autoclass:: nova.core.memory.Memory
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+InteractionLogger
+~~~~~~~~~~~~~~~
+
+.. autoclass:: nova.core.logging.InteractionLogger
    :members:
    :undoc-members:
    :show-inheritance:
@@ -47,10 +71,18 @@ Memory
 Types
 -----
 
+AgentState
+~~~~~~~~~
+
+.. autoclass:: nova.core.base_agent.AgentState
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Action
 ~~~~~~
 
-.. autoclass:: nova.types.actions.Action
+.. autoclass:: nova.core.types.Action
    :members:
    :undoc-members:
    :show-inheritance:
@@ -58,15 +90,7 @@ Action
 ActionResult
 ~~~~~~~~~~~
 
-.. autoclass:: nova.types.actions.ActionResult
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-State
-~~~~~
-
-.. autoclass:: nova.types.state.State
+.. autoclass:: nova.core.types.ActionResult
    :members:
    :undoc-members:
    :show-inheritance:
@@ -77,7 +101,7 @@ Exceptions
 NovaError
 ~~~~~~~~~
 
-.. autoexception:: nova.exceptions.NovaError
+.. autoexception:: nova.core.exceptions.NovaError
    :members:
    :undoc-members:
    :show-inheritance:
@@ -85,7 +109,7 @@ NovaError
 BrowserError
 ~~~~~~~~~~~
 
-.. autoexception:: nova.exceptions.BrowserError
+.. autoexception:: nova.core.exceptions.BrowserError
    :members:
    :undoc-members:
    :show-inheritance:
@@ -93,7 +117,15 @@ BrowserError
 ActionError
 ~~~~~~~~~~
 
-.. autoexception:: nova.exceptions.ActionError
+.. autoexception:: nova.core.exceptions.ActionError
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+LLMError
+~~~~~~~~
+
+.. autoexception:: nova.core.exceptions.LLMError
    :members:
    :undoc-members:
    :show-inheritance: 

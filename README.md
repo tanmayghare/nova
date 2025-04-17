@@ -10,14 +10,24 @@ This is the root directory of the Nova project. For detailed documentation, plea
 
 ## Quick Start
 
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+1.  **Install Dependencies:**
+    It's recommended to use a virtual environment.
+    ```bash
+    pip install -e .[dev]
+    ```
 
-2. Run the server:
-```bash
-python run_server.py
-```
+2.  **Configure Environment:**
+    Copy the example environment file and configure it with your settings (e.g., API keys, model preferences).
+    ```bash
+    cp .env.example .env
+    # Edit .env with your values
+    ```
+    *Key variables to check:* `LLM_PROVIDER`, `MODEL_NAME`, `NVIDIA_NIM_API_KEY` (if using NIM), `BROWSER_HEADLESS`, etc.
 
-For development setup, see the [Development Guide](docs/user-guides/development.md). 
+3.  **Run the Example:**
+    Execute the example script:
+    ```bash
+    python run_nova.py
+    ```
+
+For more detailed setup and development information, see the [Development Guide](docs/user-guides/development.md). 

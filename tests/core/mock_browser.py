@@ -1,110 +1,70 @@
-"""Mock browser implementation for testing."""
+"""Mock browser for testing."""
 
-import asyncio
-from typing import Dict, List, Any, Optional
-from unittest.mock import MagicMock
+from typing import Any, Dict, Optional
+from unittest.mock import AsyncMock, MagicMock
 
-class MockBrowser:
-    """Mock browser implementation for testing."""
+from nova.core.browser import Browser
+
+class MockBrowser(Browser):
+    """Mock browser for testing."""
     
-    def __init__(self):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the mock browser."""
-        self._is_open = False
-        self._current_url = None
-        self._page_content = None
-        self._actions = []
-        self.page = None
+        super().__init__(config or {})
+        
+        # Mock methods
+        self.start = AsyncMock()
+        self.stop = AsyncMock()
+        self.navigate = AsyncMock(return_value={"status": "success"})
+        self.click = AsyncMock(return_value={"status": "success"})
+        self.type = AsyncMock(return_value={"status": "success"})
+        self.get_text = AsyncMock(return_value={"status": "success", "text": "Mock text"})
+        self.get_html = AsyncMock(return_value={"status": "success", "html": "<html>Mock HTML</html>"})
+        self.screenshot = AsyncMock(return_value={"status": "success", "path": "mock_screenshot.png"})
+        self.wait_for_selector = AsyncMock(return_value={"status": "success"})
+        self.scroll = AsyncMock(return_value={"status": "success"})
+        
+        # Mock page
+        self.page = MagicMock()
+        self.page.url = "https://example.com"
+        self.page.title = "Mock Page"
         
     async def start(self) -> None:
-        """Start the browser."""
-        self._is_open = True
-        self.page = MagicMock()
-        await asyncio.sleep(0.1)  # Simulate browser startup
-        
-    async def stop(self) -> None:
-        """Stop the browser."""
-        self._is_open = False
-        self.page = None
-        await asyncio.sleep(0.1)  # Simulate browser shutdown
-        
-    async def open(self) -> None:
-        """Open the browser."""
+        """Mock start method."""
         await self.start()
         
-    async def close(self) -> None:
-        """Close the browser."""
+    async def stop(self) -> None:
+        """Mock stop method."""
         await self.stop()
         
-    async def navigate(self, url: str) -> None:
-        """Navigate to a URL."""
-        if not self._is_open:
-            raise RuntimeError("Browser is not open")
-            
-        self._current_url = url
-        self._actions.append({"type": "navigate", "url": url})
+    async def navigate(self, url: str) -> Dict[str, Any]:
+        """Mock navigate method."""
+        return await self.navigate(url)
         
-        # Simulate page load
-        await asyncio.sleep(0.2)
+    async def click(self, selector: str) -> Dict[str, Any]:
+        """Mock click method."""
+        return await self.click(selector)
         
-        # Set mock page content based on URL
-        if "amazon.com" in url:
-            self._page_content = """
-            <div data-component-type="s-search-result">
-                <h2>Gaming Laptop 1</h2>
-                <span class="a-price">$999.99</span>
-            </div>
-            <div data-component-type="s-search-result">
-                <h2>Gaming Laptop 2</h2>
-                <span class="a-price">$1,299.99</span>
-            </div>
-            <div data-component-type="s-search-result">
-                <h2>Gaming Laptop 3</h2>
-                <span class="a-price">$899.99</span>
-            </div>
-            """
-        else:
-            self._page_content = "<html><body>Mock page content</body></html>"
-            
-    async def extract(self, selector: str, id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Extract elements matching the selector."""
-        if not self._is_open:
-            raise RuntimeError("Browser is not open")
-            
-        self._actions.append({"type": "extract", "selector": selector, "id": id, "limit": limit})
+    async def type(self, selector: str, text: str) -> Dict[str, Any]:
+        """Mock type method."""
+        return await self.type(selector, text)
         
-        # Simulate extraction
-        await asyncio.sleep(0.1)
+    async def get_text(self, selector: str) -> Dict[str, Any]:
+        """Mock get_text method."""
+        return await self.get_text(selector)
         
-        # Return mock data
-        if "s-search-result" in selector:
-            return [
-                {"title": "Gaming Laptop 1", "price": "$999.99"},
-                {"title": "Gaming Laptop 2", "price": "$1,299.99"},
-                {"title": "Gaming Laptop 3", "price": "$899.99"}
-            ][:limit]
-        else:
-            return [{"content": "Mock extracted content"}]
-            
-    async def click(self, selector: str) -> None:
-        """Click an element."""
-        if not self._is_open:
-            raise RuntimeError("Browser is not open")
-            
-        self._actions.append({"type": "click", "selector": selector})
-        await asyncio.sleep(0.1)
+    async def get_html(self, selector: str) -> Dict[str, Any]:
+        """Mock get_html method."""
+        return await self.get_html(selector)
         
-    async def type(self, selector: str, text: str) -> None:
-        """Type text into an element."""
-        if not self._is_open:
-            raise RuntimeError("Browser is not open")
-            
-        self._actions.append({"type": "type", "selector": selector, "text": text})
-        await asyncio.sleep(0.1)
+    async def screenshot(self, path: str) -> Dict[str, Any]:
+        """Mock screenshot method."""
+        return await self.screenshot(path)
         
-    def get_actions(self) -> List[Dict[str, Any]]:
-        """Get the list of actions performed."""
-        return self._actions
+    async def wait_for_selector(self, selector: str, timeout: int = 30) -> Dict[str, Any]:
+        """Mock wait_for_selector method."""
+        return await self.wait_for_selector(selector, timeout)
         
-    def clear_actions(self) -> None:
-        """Clear the action history."""
-        self._actions = [] 
+    async def scroll(self, selector: str) -> Dict[str, Any]:
+        """Mock scroll method."""
+        return await self.scroll(selector) 

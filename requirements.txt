@@ -1,25 +1,40 @@
-requests>=2.31.0  # Required by example_api tool
-pyyaml>=6.0.1  # Required for YAML configuration support
-psutil>=5.9.0  # Required for memory/CPU monitoring
-fastapi>=0.105.0  # Required for web dashboard
-uvicorn>=0.24.0  # ASGI server for FastAPI
-jinja2>=3.1.2  # Templating for web pages
-websockets>=12.0  # Required for real-time updates
-playwright>=1.40.0  # Required for browser automation
-langchain-core>=0.1.0  # Required for language model integration
-pydantic>=2.0.0  # Required for data validation
-httpx>=0.25.0  # Required for async HTTP requests
-cachetools>=5.5.2  # Required for LLM response caching
-tenacity>=9.1.2  # Required for retry mechanisms
-aiohttp>=3.8.0  # Required for async HTTP requests
-setuptools>=69.0.0  # Required for package installation and distribution
+# Core dependencies
+langchain>=0.1.0
+langgraph>=0.0.15
+langchain-community>=0.0.10
+langchain-core>=0.1.10
+langchain-openai>=0.0.2
+langchain-nvidia-ai-endpoints>=0.0.3
+
+# RAG specific
+faiss-cpu>=1.7.4
+sentence-transformers>=2.2.2
+pypdf>=3.17.1
+unstructured>=0.10.30
+
+# Web Search specific
+duckduckgo-search>=4.1.1
+tavily-python>=0.2.5
+google-api-python-client>=2.108.0
+
+# Local LLM support
+ollama>=0.1.6
+
+# Existing project dependencies
+playwright>=1.40.0
+python-dotenv>=1.0.0
+fastapi>=0.104.1
+uvicorn>=0.24.0
+pydantic>=2.4.2
 
 # --- Added for RAG Learning System ---
 chromadb>=0.4.22 # Vector Database for interaction logs
-sentence-transformers>=2.2.2 # For embedding generation
 
 # Add commentjson for robust JSON parsing
 commentjson
 
 # Add pysqlite3-binary to provide a newer sqlite3 version for ChromaDB
 pysqlite3-binary
+
+# Travel APIs
+amadeus

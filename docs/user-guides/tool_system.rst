@@ -1,120 +1,187 @@
 Tool System
 ===========
 
-The Nova tool system provides a powerful framework for creating, managing, and executing tools. This document covers the core concepts, advanced features, and best practices for working with the tool system.
+The Nova tool system provides a flexible framework for creating and executing browser automation tools. This document covers the core concepts, browser tools, and best practices for working with the tool system.
 
 Core Concepts
 ------------
 
-Base Tool
-~~~~~~~~
-
-The ``BaseTool`` class is the foundation of the tool system. All tools must inherit from this class and implement the required methods:
-
-.. code-block:: python
-
-    from nova.tools import BaseTool, ToolResult
-
-    class MyTool(BaseTool):
-        @classmethod
-        def get_default_config(cls):
-            return ToolConfig(
-                name="my_tool",
-                version="1.0.0",
-                description="My custom tool"
-            )
-
-        async def validate_input(self, input_data):
-            return True
-
-        async def execute(self, input_data):
-            # Tool implementation
-            return ToolResult(success=True, data=result)
-
-Tool Registry
+Browser Tools
 ~~~~~~~~~~~~
 
-The ``ToolRegistry`` manages tool registration and discovery:
+The ``BrowserTools`` class provides a set of tools for browser automation:
 
 .. code-block:: python
 
-    from nova.tools import ToolRegistry
+    from nova.tools.browser_tools import BrowserTools
+    from nova.core.browser import Browser
 
-    registry = ToolRegistry()
-    registry.register(MyTool())
-
-Advanced Features
----------------
-
-Performance Monitoring
-~~~~~~~~~~~~~~~~~~~~
-
-The tool system includes built-in performance monitoring:
-
-.. code-block:: python
-
-    # Get metrics for a tool
-    metrics = tool.get_metrics()
-    avg_time = metrics.get_average_execution_time("tool_name")
-    success_rate = metrics.get_success_rate("tool_name")
-
-Advanced Configuration
-~~~~~~~~~~~~~~~~~~~~
-
-Tools can be configured with advanced settings:
-
-.. code-block:: python
-
-    config = AdvancedToolConfig(
-        name="my_tool",
-        version="2.0.0",
+    # Initialize browser
+    browser = Browser(
+        headless=False,
         timeout=30,
-        max_memory_mb=100,
-        log_level="INFO",
-        custom_settings={"setting": "value"}
+        viewport={"width": 1280, "height": 720}
     )
 
-User-Defined Tools
-~~~~~~~~~~~~~~~~~
+    # Create browser tools
+    tools = BrowserTools(browser)
 
-Users can create their own tools:
+    # Use tools
+    await tools.navigate("https://example.com")
+    await tools.click("#button")
+    await tools.type("#input", "Hello, World!")
+
+Tool Registration
+~~~~~~~~~~~~~~~
+
+Tools are registered with the agent during initialization:
 
 .. code-block:: python
 
-    from nova.tools.utils.user_tools import UserToolManager
+    from nova.agents.task.task_agent import TaskAgent
+    from nova.core.memory import Memory
 
-    manager = UserToolManager()
-    manager.create_tool_template("my_tool")
-    # Edit the generated template
-    tool = manager.load_user_tool("my_tool")
+    # Initialize components
+    memory = Memory()
+    tools = BrowserTools(browser)
+
+    # Create agent with tools
+    agent = TaskAgent(
+        llm_config=llm_config,
+        memory=memory,
+        tools=tools
+    )
+
+Browser Actions
+-------------
+
+The following browser actions are supported:
+
+Navigation
+~~~~~~~~~
+
+.. code-block:: python
+
+    # Navigate to URL
+    await tools.navigate("https://example.com")
+
+    # Navigate back
+    await tools.go_back()
+
+    # Navigate forward
+    await tools.go_forward()
+
+    # Refresh page
+    await tools.refresh()
+
+Element Interaction
+~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    # Click element
+    await tools.click("#button")
+    await tools.click("button:has-text('Submit')")
+
+    # Type text
+    await tools.type("#input", "Hello, World!")
+    await tools.type("[placeholder='Search']", "query")
+
+    # Select option
+    await tools.select("#dropdown", "option2")
+
+    # Check/Uncheck
+    await tools.check("#checkbox")
+    await tools.uncheck("#checkbox")
+
+    # Hover
+    await tools.hover("#menu")
+
+Content Retrieval
+~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    # Get text
+    text = await tools.get_text("#content")
+
+    # Get attribute
+    href = await tools.get_attribute("a", "href")
+
+    # Get all matching elements
+    elements = await tools.get_elements(".item")
+
+    # Check if element exists
+    exists = await tools.element_exists("#element")
+
+Screenshot and DOM
+~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    # Take screenshot
+    await tools.screenshot("screenshot.png")
+
+    # Get page source
+    source = await tools.get_page_source()
+
+    # Get DOM snapshot
+    dom = await tools.get_dom_snapshot()
+
+Error Handling
+------------
+
+The tool system includes comprehensive error handling:
+
+.. code-block:: python
+
+    try:
+        await tools.click("#missing-button")
+    except Exception as e:
+        print(f"Error: {e}")
+        # Handle error
+
+Performance Monitoring
+--------------------
+
+Track tool performance:
+
+.. code-block:: python
+
+    # Get tool metrics
+    metrics = tools.get_metrics()
+    print(f"Total actions: {metrics.total_actions}")
+    print(f"Success rate: {metrics.success_rate}")
+    print(f"Average duration: {metrics.average_duration}")
 
 Best Practices
 -------------
 
-1. Input Validation
-   - Always validate input data in the ``validate_input`` method
-   - Return clear error messages for invalid input
+1. **Element Selection**:
+   - Use unique and stable selectors
+   - Prefer IDs over classes
+   - Use text content as fallback
 
-2. Error Handling
-   - Use ``ToolResult`` to return execution results
-   - Include detailed error messages
-   - Track execution time
+2. **Error Handling**:
+   - Always handle potential errors
+   - Provide meaningful error messages
+   - Implement retry logic where appropriate
 
-3. Performance
-   - Monitor execution time
+3. **Performance**:
+   - Minimize unnecessary actions
    - Use appropriate timeouts
-   - Implement caching where appropriate
+   - Monitor execution time
 
-4. Configuration
-   - Use meaningful default values
-   - Document configuration options
-   - Validate configuration values
+4. **State Management**:
+   - Update memory after significant actions
+   - Track success/failure of actions
+   - Maintain context for error recovery
 
 Examples
 --------
 
 See the ``examples`` directory for complete examples:
 
-- ``tool_system_test.py``: Basic tool usage
-- ``advanced_features_test.py``: Advanced features
-- ``tool_chain_test.py``: Tool chaining 
+- ``browser_automation.py``: Basic browser automation
+- ``form_filling.py``: Form interaction
+- ``scraping.py``: Content extraction 

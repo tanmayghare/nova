@@ -8,10 +8,10 @@ Overview
 
 The memory system consists of the following key components:
 
-- **Memory Storage**: Stores task execution history with timestamps
-- **Context Retrieval**: Retrieves relevant context based on current task
-- **Memory Summarization**: Maintains summaries of task executions
-- **Memory Management**: Handles memory size limits and cleanup
+- **State Storage**: Stores agent state and execution history
+- **Context Management**: Manages task context and relevant information
+- **Performance Tracking**: Tracks execution metrics and performance
+- **Error Recovery**: Maintains error history for improved handling
 
 Usage
 -----
@@ -24,48 +24,100 @@ Basic Usage
     from nova.core.memory import Memory
 
     # Initialize memory
-    memory = Memory(max_entries=1000)  # Optional: set maximum number of entries
+    memory = Memory()
 
-    # Add a memory entry
-    await memory.add(
-        task="Navigate to website",
-        step={"type": "browser", "action": {"type": "navigate", "url": "https://example.com"}},
-        result="Successfully navigated to example.com"
-    )
+    # Update state
+    memory.update({
+        "current_url": "https://example.com",
+        "last_action": "click",
+        "timestamp": "2024-04-17T12:00:00Z"
+    })
 
-    # Get context for a task
-    context = await memory.get_context("Navigate to website")
-    print(context)
+    # Get relevant state
+    relevant = memory.get_relevant({
+        "current_url": "https://example.com"
+    })
+    print(relevant)
 
-    # Get summary of memories
-    summary = await memory.get_summary()
-    print(summary)
+    # Track performance
+    memory.track_performance({
+        "action": "navigate",
+        "duration": 1.5,
+        "success": True
+    })
 
-Memory Management
-~~~~~~~~~~~~~~~
+State Management
+~~~~~~~~~~~~~~
 
-The memory system automatically manages memory size:
+The memory system manages agent state:
 
 .. code-block:: python
 
-    # Memory will automatically remove oldest entries when limit is reached
-    memory = Memory(max_entries=2)
-    await memory.add("task1", {}, "result1")
-    await memory.add("task2", {}, "result2")
-    await memory.add("task3", {}, "result3")  # task1 will be removed
+    # Store complete state
+    state = {
+        "url": "https://example.com",
+        "actions": ["navigate", "click"],
+        "timestamp": "2024-04-17T12:00:00Z",
+        "performance": {
+            "total_actions": 2,
+            "success_rate": 1.0
+        }
+    }
+    memory.update(state)
 
-Serialization
+    # Retrieve state
+    current_state = memory.get_state()
+    print(current_state)
+
+Performance Tracking
+~~~~~~~~~~~~~~~~~
+
+Track execution metrics:
+
+.. code-block:: python
+
+    # Track action performance
+    memory.track_performance({
+        "action": "navigate",
+        "duration": 1.5,
+        "success": True,
+        "error": None
+    })
+
+    # Track LLM performance
+    memory.track_performance({
+        "component": "llm",
+        "duration": 0.8,
+        "tokens_used": 150,
+        "success": True
+    })
+
+    # Get performance metrics
+    metrics = memory.get_performance_metrics()
+    print(metrics)
+
+Error Handling
 ~~~~~~~~~~~~
 
-Memories can be serialized to JSON for storage:
+Manage error history:
 
 .. code-block:: python
 
-    # Save memory to JSON
-    json_str = memory.to_json()
+    # Track error
+    memory.track_error({
+        "type": "browser_error",
+        "message": "Element not found",
+        "timestamp": "2024-04-17T12:00:00Z",
+        "context": {
+            "url": "https://example.com",
+            "action": "click",
+            "selector": "#missing-button"
+        }
+    })
 
-    # Load memory from JSON
-    new_memory = Memory.from_json(json_str)
+    # Get error history
+    errors = memory.get_error_history()
+    print(errors)
 
 API Reference
 ------------
@@ -78,59 +130,59 @@ Memory
    :undoc-members:
    :show-inheritance:
 
-Memory Entry Format
------------------
+State Format
+-----------
 
-Each memory entry contains the following fields:
-
-- **task**: Description of the task
-- **step**: The step that was executed (browser action or tool action)
-- **result**: The result of the step execution
-- **timestamp**: ISO format timestamp of when the entry was created
-
-Example:
+The memory system stores state in the following format:
 
 .. code-block:: json
 
     {
-        "task": "Navigate to website",
-        "step": {
-            "type": "browser",
-            "action": {
-                "type": "navigate",
-                "url": "https://example.com"
-            }
+        "current_url": "https://example.com",
+        "last_action": "click",
+        "timestamp": "2024-04-17T12:00:00Z",
+        "performance": {
+            "total_actions": 10,
+            "success_rate": 0.9,
+            "average_duration": 1.2
         },
-        "result": "Successfully navigated to example.com",
-        "timestamp": "2024-04-10T12:00:00.000Z"
+        "errors": [
+            {
+                "type": "browser_error",
+                "message": "Element not found",
+                "timestamp": "2024-04-17T12:00:00Z"
+            }
+        ]
     }
 
-Context Retrieval
----------------
+Performance Metrics
+-----------------
 
-The memory system uses the following strategies to retrieve relevant context:
+The memory system tracks the following metrics:
 
-1. **Direct Task Match**: Memories with the same task description
-2. **Keyword Matching**: Memories with similar keywords in the task description
-3. **Recent Memories**: Most recent memories if no direct matches are found
+1. **Action Performance**:
+   - Duration
+   - Success rate
+   - Error count
+   - Average duration
 
-The context is formatted as a natural language string combining relevant memories.
+2. **LLM Performance**:
+   - Token usage
+   - Response time
+   - Success rate
+   - Error rate
 
-Memory Summarization
-------------------
-
-The memory system maintains summaries for each task type. Summaries are updated whenever a new memory is added for a task. The summary format is:
-
-.. code-block:: text
-
-    Task: <task description>
-    Summary: <combined results of all executions of this task>
+3. **Overall Metrics**:
+   - Total actions
+   - Total errors
+   - Average performance
+   - Success rate
 
 Best Practices
 -------------
 
-1. **Memory Size**: Set appropriate `max_entries` based on your use case
-2. **Task Descriptions**: Use consistent and descriptive task names
-3. **Result Format**: Keep results concise and informative
-4. **Regular Cleanup**: Use `clear()` when starting new sessions
-5. **Serialization**: Save important memories to disk when needed 
+1. **State Updates**: Update state after each significant action
+2. **Performance Tracking**: Track all major operations
+3. **Error Handling**: Log all errors with context
+4. **State Relevance**: Use specific queries for relevant state
+5. **Regular Cleanup**: Clear old state when starting new sessions 

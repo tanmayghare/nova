@@ -1,271 +1,269 @@
+"""Tests for the TaskAgent implementation."""
+
 import pytest
-from typing import Any, Dict, Sequence
-from unittest.mock import AsyncMock, MagicMock
-from pytest_mock import MockerFixture
+from typing import Any, Dict, List, Optional, Sequence
+from unittest.mock import AsyncMock, MagicMock, patch, call
 
-from nova.agent.agent import Agent
-from nova.core.browser import Browser
-from nova.core.config import AgentConfig, BrowserConfig
-from nova.core.llm import LLM
-from nova.core.memory import Memory
-from nova.core.tools import Tool
+# Import necessary components
+from nova.core.llm import LLM, LLMConfig
+from nova.core.memory import Memory, MemoryConfig
+from nova.core.tools import Tool, ToolRegistry, ToolResult, BrowserTools
+from nova.core.browser import Browser, BrowserConfig
+from nova.agents.task.task_agent import TaskAgent, TaskResult
 
-
-class MockTool(Tool):
-    """A mock tool for testing."""
-
-    def __init__(self) -> None:
-        super().__init__("mock", "A mock tool")
-
-    async def execute(self, input_data: Dict[str, Any]) -> str:
-        return f"Mock result for {input_data}"
-
+# --- Fixtures ---
 
 @pytest.fixture
-def mock_llm() -> MagicMock:
-    """Create a mock LLM."""
-    llm = MagicMock(spec=LLM)
-    # Updated for ReAct: generate_plan returns (thought, plan_steps)
-    # Use side_effect to simulate loop: 1 action, then stop
-    llm.generate_plan = AsyncMock(side_effect=[
-        ("Thought for step 1", [{'tool': 'mock', 'input': {'test': 'data'}}]), # Iteration 1
-        ("Thought for stopping", []) # Iteration 2 (empty plan stops loop)
-    ])
-    llm.generate_response = AsyncMock(return_value="Final ReAct response")
-    return llm
-
+def llm_config():
+    """Basic LLMConfig fixture."""
+    # Minimal config, assume env vars are mocked elsewhere if needed
+    return LLMConfig()
 
 @pytest.fixture
-def mock_browser() -> MagicMock:
-    """Create a mock browser."""
-    browser = MagicMock(spec=Browser)
-    browser.start = AsyncMock()
-    browser.stop = AsyncMock()
-    browser.navigate = AsyncMock()
-    browser.get_text = AsyncMock(return_value="Example text")
-    
-    # Add mock page attribute for _get_structured_dom
-    browser.page = AsyncMock()
-    # Ensure screenshot returns a serializable path string
-    browser.screenshot = AsyncMock(return_value="screenshots/mock_screenshot.png") 
-
-    return browser
-
+def browser_config():
+    """Basic BrowserConfig fixture."""
+    return BrowserConfig(headless=True)
 
 @pytest.fixture
-def mock_memory() -> MagicMock:
-    """Create a mock memory."""
-    memory = MagicMock(spec=Memory)
-    memory.get_context = AsyncMock(return_value="Context")
-    memory.add = AsyncMock()
-    return memory
+def memory_config():
+    """Basic MemoryConfig fixture."""
+    return MemoryConfig()
 
+# --- Mock Classes/Instances --- 
+
+# Use AsyncMock for async methods
+@pytest.fixture
+def mock_llm():
+    """Mock LLM instance."""
+    mock = AsyncMock(spec=LLM)
+    # Mock the methods TaskAgent interacts with
+    mock.generate_structured_output.return_value = { # Simulate LLM providing next action
+        "thought": "I need to navigate first.",
+        "action": {
+            "tool": "navigate", 
+            "input": {"url": "https://example.com"}
+        }
+    }
+    mock.generate_text.return_value = "Task appears complete." # Simulate completion check response
+    return mock
 
 @pytest.fixture
-async def agent(mock_llm: MagicMock, mock_browser: MagicMock, mock_memory: MagicMock) -> Agent:
-    """Create an agent instance for testing."""
-    tools: Sequence[Tool] = [MockTool()]
-    config = AgentConfig()
-    browser_config = BrowserConfig(headless=True)
-    agent_instance = Agent(
-        llm=mock_llm,
-        tools=tools,
-        memory=mock_memory,
-        config=config,
-        browser_config=browser_config,
+def mock_browser():
+    """Mock Browser instance."""
+    mock = AsyncMock(spec=Browser)
+    mock.start = AsyncMock()
+    mock.stop = AsyncMock()
+    mock.get_current_url = AsyncMock(return_value="mock://blank")
+    # BrowserTools might call other methods if used, mock them as needed
+    return mock
+
+@pytest.fixture
+def mock_memory():
+    """Mock Memory instance."""
+    mock = AsyncMock(spec=Memory)
+    mock.load_memory_variables = AsyncMock(return_value={"history": "mock history"})
+    mock.save_context = AsyncMock()
+    mock.get_context = AsyncMock(return_value="mock context")
+    return mock
+
+@pytest.fixture
+def mock_tool_registry():
+    """Mock ToolRegistry instance."""
+    mock = MagicMock(spec=ToolRegistry) # Use MagicMock for easier attribute/method mocking
+    mock.execute_tool = AsyncMock(return_value=ToolResult(success=True, data={"status": "navigated"}).to_dict())
+    mock.get_tool_names = MagicMock(return_value=["navigate", "mock_tool"])
+    mock.get_tool_schema_string = MagicMock(return_value="Schema: {...}")
+    mock.get_tool_by_type = MagicMock(return_value=None) # Default: BrowserTools not found
+    mock.register_tool = MagicMock()
+    return mock
+
+# --- Tests --- 
+
+@patch('nova.agents.task.task_agent.LLM')
+@patch('nova.agents.task.task_agent.Browser')
+@patch('nova.agents.task.task_agent.Memory')
+@patch('nova.agents.task.task_agent.ToolRegistry')
+def test_task_agent_initialization_no_browser(
+    MockToolRegistry, MockMemory, MockBrowser, MockLLM,
+    llm_config, memory_config # Use fixtures
+):
+    """Test agent initialization without browser config."""
+    mock_llm_instance = MockLLM.return_value
+    mock_memory_instance = MockMemory.return_value
+    mock_registry_instance = MockToolRegistry.return_value
+    mock_browser_instance = MockBrowser.return_value
+
+    class CustomTool(Tool):
+        def __init__(self): super().__init__("custom", "desc")
+        async def execute(self, **kwargs): return ToolResult(True, {}) 
+            
+    custom_tools = [CustomTool()]
+
+    agent = TaskAgent(
+        task_id="test-01",
+        task_description="Do something without browser",
+        llm_config=llm_config,
+        browser_config=None, # Explicitly None
+        memory=mock_memory_instance, # Pass mock instance
+        tools=custom_tools 
     )
-    # Manually assign the mock browser AFTER initialization for testing purposes,
-    # as the actual browser initialization happens within CoreAgent's __init__
-    # which we don't want to interfere with heavily.
-    agent_instance.browser = mock_browser 
+
+    MockLLM.assert_called_once_with(config=llm_config)
+    assert agent.llm == mock_llm_instance
+    assert agent.llm_config == llm_config
     
-    yield agent_instance
-    
-    # Cleanup
-    if agent_instance.browser:
-        await agent_instance.browser.stop()
+    assert agent.browser_config is None
+    MockBrowser.assert_not_called() # Browser should not be initialized
+    assert agent.browser is None
+
+    assert agent.memory == mock_memory_instance
+    MockMemory.assert_called_once() # Should be called if memory=None, but we passed instance
+
+    assert agent.tool_registry == mock_registry_instance
+    MockToolRegistry.assert_called_once()
+    # Check that custom tool was registered
+    mock_registry_instance.register_tool.assert_called_once_with(custom_tools[0])
+    # Check BrowserTools were NOT registered
+    assert mock_registry_instance.get_tool_by_type(BrowserTools) is None
 
 
+@patch('nova.agents.task.task_agent.LLM')
+@patch('nova.agents.task.task_agent.Browser')
+@patch('nova.agents.task.task_agent.Memory')
+@patch('nova.agents.task.task_agent.ToolRegistry')
+@patch('nova.agents.task.task_agent.BrowserTools') # Also patch BrowserTools class
+def test_task_agent_initialization_with_browser(
+    MockBrowserTools, MockToolRegistry, MockMemory, MockBrowser, MockLLM,
+    llm_config, browser_config, memory_config
+):
+    """Test agent initialization *with* browser config, ensuring BrowserTools are added."""
+    mock_llm_instance = MockLLM.return_value
+    mock_memory_instance = MockMemory.return_value
+    mock_registry_instance = MockToolRegistry.return_value
+    mock_browser_instance = MockBrowser.return_value
+    mock_browser_tools_instance = MockBrowserTools.return_value
+
+    # Simulate ToolRegistry initially not having BrowserTools
+    mock_registry_instance.get_tool_by_type.return_value = None 
+
+    agent = TaskAgent(
+        task_id="test-02",
+        task_description="Do something with browser",
+        llm_config=llm_config,
+        browser_config=browser_config, # Provide browser config
+        memory=mock_memory_instance,
+        tools=[] # No other tools
+    )
+
+    assert agent.llm_config == llm_config
+    assert agent.browser_config == browser_config
+    MockBrowser.assert_called_once_with(config=browser_config)
+    assert agent.browser == mock_browser_instance
+    
+    # Check BrowserTools initialization and registration
+    MockBrowserTools.assert_called_once_with(mock_browser_instance)
+    mock_registry_instance.register_tool.assert_called_once_with(mock_browser_tools_instance)
+
+
+# Patch the internal methods for run() test
+@patch.object(TaskAgent, '_get_next_action', new_callable=AsyncMock)
+@patch.object(TaskAgent, '_execute_action', new_callable=AsyncMock)
+@patch.object(TaskAgent, '_is_task_complete', new_callable=AsyncMock)
+@patch.object(TaskAgent, 'start', new_callable=AsyncMock)
+@patch.object(TaskAgent, 'stop', new_callable=AsyncMock)
 @pytest.mark.asyncio
-async def test_agent_initialization(
-    agent: Agent,
-    mock_llm: MagicMock,
-    mock_browser: MagicMock,
-    mock_memory: MagicMock,
-) -> None:
-    """Test agent initialization."""
-    assert agent.llm == mock_llm
-    assert len(agent.tools) == 1
-    assert agent.memory == mock_memory
-    assert isinstance(agent.config, AgentConfig)
-    assert isinstance(agent.browser, Browser)
+async def test_task_execution_success(
+    mock_stop, mock_start, mock_is_task_complete, mock_execute_action, mock_get_next_action,
+    llm_config, browser_config, mock_memory # Need memory for save_context
+):
+    """Test the run loop logic for a successful task execution."""
+    # --- Setup Mocks for run() --- 
+    # 1. _get_next_action returns an action, then None (or _is_task_complete returns True)
+    action1 = {"tool": "navigate", "input": {"url": "https://example.com"}}
+    mock_get_next_action.side_effect = [action1, None] # Simulate one action, then stop
+    
+    # 2. _execute_action returns a successful ToolResult dict
+    action1_result = ToolResult(success=True, data={"status": "navigated"}).to_dict()
+    mock_execute_action.return_value = action1_result
+    
+    # 3. _is_task_complete returns False, then True (can also be controlled by _get_next_action)
+    # We use side_effect on _get_next_action to stop loop, so this mock isn't strictly needed here
+    mock_is_task_complete.return_value = False 
+
+    # --- Initialize Agent (mocks patched externally) --- 
+    agent = TaskAgent(
+        task_id="run-test-01",
+        task_description="Test run success",
+        llm_config=llm_config,
+        browser_config=browser_config, # Needs browser for start/stop calls
+        memory=mock_memory # Use mocked memory
+    )
+    agent.memory = mock_memory # Ensure mock memory is used
+    # agent.tool_registry = mock_tool_registry # Can assign if needed
+    # agent.llm = mock_llm # Can assign if needed
+
+    # --- Execute Run --- 
+    result = await agent.run()
+
+    # --- Assertions --- 
+    mock_start.assert_awaited_once()
+    assert mock_get_next_action.await_count == 2 # Called until None is returned
+    mock_execute_action.assert_awaited_once_with(action1)
+    # mock_is_task_complete.assert_awaited_once_with(action1_result)
+    mock_memory.save_context.assert_awaited_once()
+    mock_stop.assert_awaited_once()
+
+    assert isinstance(result, TaskResult)
+    assert result.status == "completed" # Should infer completion if loop ends gracefully
+    assert result.steps_taken == 1 # Executed one action step
+    assert result.error is None
+    # assert result.result # Check final result content if applicable
 
 
+@patch.object(TaskAgent, '_get_next_action', new_callable=AsyncMock)
+@patch.object(TaskAgent, '_execute_action', new_callable=AsyncMock)
+@patch.object(TaskAgent, 'start', new_callable=AsyncMock)
+@patch.object(TaskAgent, 'stop', new_callable=AsyncMock)
+@patch.object(TaskAgent, '_handle_error') # Mock error handler
 @pytest.mark.asyncio
-async def test_agent_run(agent: Agent, mock_llm: MagicMock, mock_browser: MagicMock, mock_memory: MagicMock, mocker: MockerFixture) -> None:
-    """Test running the agent with the ReAct loop."""
-    task_description = "Test ReAct task"
+async def test_task_execution_action_error(
+    mock_handle_error, mock_stop, mock_start, mock_execute_action, mock_get_next_action,
+    llm_config, mock_memory
+):
+    """Test the run loop logic when _execute_action raises an error."""
+    # --- Setup Mocks --- 
+    action1 = {"tool": "bad_tool", "input": {}}
+    mock_get_next_action.return_value = action1 # Always return action
     
-    # Mock execute_tool using mocker for this specific test
-    mock_execute = mocker.patch.object(agent.tool_registry, 'execute_tool', return_value="Mock tool execution result")
+    # _execute_action raises exception
+    execution_exception = ValueError("Tool failed miserably")
+    mock_execute_action.side_effect = execution_exception
 
-    result = await agent.run(task_description)
+    # --- Initialize Agent --- 
+    agent = TaskAgent(
+        task_id="run-fail-01",
+        task_description="Test run failure",
+        llm_config=llm_config,
+        browser_config=None, # No browser needed for this test
+        memory=mock_memory
+    )
+    agent.memory = mock_memory
 
-    # Check final status and response
-    assert result["status"] == "success"
-    assert result["response"] == "Final ReAct response"
-    assert result["results"] == ["Mock tool execution result"] # Should contain result from the one executed tool
+    # --- Execute Run --- 
+    result = await agent.run()
 
-    # Check history
-    assert isinstance(result["history"], list)
-    assert len(result["history"]) == 2 # 1 iteration with action, 1 iteration stopping
-    
-    # Check first iteration history entry
-    history_1 = result["history"][0]
-    assert history_1["iteration"] == 1
-    assert history_1["thought"] == "Thought for step 1"
-    assert history_1["action"] == {'tool': 'mock', 'input': {'test': 'data'}}
-    assert history_1["observation"]["status"] == "success"
-    assert history_1["observation"]["result"] == "Mock tool execution result"
+    # --- Assertions --- 
+    mock_start.assert_awaited_once()
+    mock_get_next_action.assert_awaited_once() # Gets action once
+    mock_execute_action.assert_awaited_once_with(action1) # Executes once
+    mock_handle_error.assert_called_once_with(
+        "unexpected_execution_error", 
+        {"step": 0, "error": str(execution_exception)}
+    )
+    mock_memory.save_context.assert_not_called() # Should not save on error before save
+    mock_stop.assert_awaited_once()
 
-    # Check second iteration history entry (stopping)
-    history_2 = result["history"][1]
-    assert history_2["iteration"] == 2
-    assert history_2["thought"] == "Thought for stopping"
-    assert "action" not in history_2 # No action taken
-    assert "observation" not in history_2 # No observation
-
-    # Verify LLM calls
-    assert mock_llm.generate_plan.call_count == 2 # Called twice (once for action, once to stop)
-    # Check arguments for the first call (more detailed check)
-    first_call_args, _ = mock_llm.generate_plan.call_args_list[0]
-    assert first_call_args[0] == task_description # task
-    
-    # --- Update Assertion for Context --- 
-    # Expect the fully formatted context, even on the first call
-    # mock_get_dom returns [] in this test by default from the mock page
-    initial_context_val = "Context" # From mock_memory
-    expected_first_context = f"""
-Initial Task Context:
-{initial_context_val}
-
-Current Page Structure (Interactive Elements):
-```json
-[]
-```
-
-Recent Execution History (last 0 steps):
-```json
-[]
-```
-"""
-    # Compare stripped versions to ignore potential leading/trailing whitespace differences
-    assert first_call_args[1].strip() == expected_first_context.strip()
-    # --- End Update --- 
-    
-    # Check arguments for the second call (context should include history)
-    second_call_args, _ = mock_llm.generate_plan.call_args_list[1]
-    assert second_call_args[0] == task_description
-    assert "Recent Execution History" in second_call_args[1]
-    assert "Thought for step 1" in second_call_args[1]
-    assert "Mock tool execution result" in second_call_args[1]
-    assert "screenshots/mock_screenshot.png" in second_call_args[1]
-    
-    mock_llm.generate_response.assert_called_once()
-    response_call_args, _ = mock_llm.generate_response.call_args_list[0]
-    assert response_call_args[0] == task_description
-    assert response_call_args[1] == result["history"] # History passed to generate final response
-    assert "Task completed or max iterations reached" in response_call_args[2]
-    
-    # Verify memory calls
-    mock_memory.get_context.assert_called() # Called multiple times (initial + context updates)
-    mock_memory.add.assert_called_once()
-    add_call_args, _ = mock_memory.add.call_args
-    assert add_call_args[1] == {'tool': 'mock', 'input': {'test': 'data'}} # Step added
-    assert add_call_args[2]["status"] == "success" # Observation added
-    
-    # Verify browser lifecycle
-    mock_browser.start.assert_called_once()
-    mock_browser.stop.assert_called_once()
-    
-    # Verify tool execution call (using the mocker-patched object)
-    mock_execute.assert_called_once_with('mock', {'test': 'data'})
-
-
-@pytest.mark.asyncio
-async def test_agent_run_max_failures(agent: Agent, mock_llm: MagicMock, mock_memory: MagicMock, mocker: MockerFixture) -> None:
-    """Test that the agent run stops after reaching max consecutive tool failures."""
-    task_description = "Test max failures task"
-    max_fails = 2
-    agent.config.max_failures = max_fails
-    
-    mock_llm.generate_plan.side_effect = None 
-    mock_llm.generate_plan.return_value = ("Thinking about failing", [{'tool': 'mock', 'input': {'fail': 'me'}}])
-    
-    # Mock Tool Registry to always fail using mocker
-    tool_error = RuntimeError("Tool execution failed consistently")
-    mock_execute = mocker.patch.object(agent.tool_registry, 'execute_tool', side_effect=tool_error)
-    
-    result = await agent.run(task_description)
-    
-    # Assertions
-    assert result["status"] == "failed"
-    assert "Reached max tool failures" in result["error"] 
-    assert str(tool_error) in result["error"] # Check if original error is included
-    assert len(result["history"]) == max_fails # Should have tried max_fails times
-    
-    # Verify calls (using the mocker-patched object)
-    assert mock_execute.call_count == max_fails
-    mock_llm.generate_response.assert_not_called() # Should fail before generating final response
-    mock_memory.add.assert_called() # Memory should have been called to record errors
-    assert mock_memory.add.call_count == max_fails
-    # Check that the last add call recorded the error observation
-    last_add_call_args, _ = mock_memory.add.call_args_list[-1]
-    assert last_add_call_args[2]["status"] == "error"
-    assert last_add_call_args[2]["error"] == str(tool_error)
-
-
-@pytest.mark.asyncio
-async def test_agent_run_finish_tool(agent: Agent, mock_llm: MagicMock, mock_memory: MagicMock, mocker: MockerFixture) -> None:
-    """Test that the agent run stops correctly when the LLM returns the finish tool."""
-    task_description = "Test finish tool task"
-    finish_reason = "Task completed successfully"
-    tool_result = "Result from mock tool"
-
-    mock_llm.generate_plan.side_effect = [
-        ("Thought for action", [{'tool': 'mock', 'input': {'data': 'step1'}}]),
-        ("Thought for finishing", [{'tool': 'finish', 'input': {'reason': finish_reason}}])
-    ]
-    mock_llm.generate_response.return_value = "Final response after finish"
-    
-    # Mock Tool Registry to succeed on the first call using mocker
-    mock_execute = mocker.patch.object(agent.tool_registry, 'execute_tool', return_value=tool_result)
-    
-    result = await agent.run(task_description)
-    
-    # Assertions
-    assert result["status"] == "success"
-    assert result["response"] == "Final response after finish"
-    assert result["results"] == [tool_result] # Only the result from the first action
-    assert len(result["history"]) == 2
-
-    # Check history entries
-    history_1 = result["history"][0]
-    assert history_1["thought"] == "Thought for action"
-    assert history_1["action"] == {'tool': 'mock', 'input': {'data': 'step1'}}
-    assert history_1["observation"]["status"] == "success"
-    assert history_1["observation"]["result"] == tool_result
-
-    history_2 = result["history"][1]
-    assert history_2["thought"] == "Thought for finishing"
-    assert history_2["action"]["tool"] == "finish"
-    assert history_2["action"]["input"]["reason"] == finish_reason
-    assert history_2["observation"]["status"] == "success"
-    assert "Task marked as finished by LLM" in history_2["observation"]["result"]
-    
-    # Verify calls (using the mocker-patched object)
-    assert mock_execute.call_count == 1
-    mock_execute.assert_called_once_with('mock', {'data': 'step1'})
-    assert mock_llm.generate_plan.call_count == 2
-    mock_llm.generate_response.assert_called_once()
-    mock_memory.add.assert_called_once() # Only called for the successful 'mock' tool execution
+    assert isinstance(result, TaskResult)
+    assert result.status == "failed" # Should fail if error handler called
+    assert result.steps_taken == 0 # Error occurred in step 0
+    assert str(execution_exception) in result.error # Error should be propagated

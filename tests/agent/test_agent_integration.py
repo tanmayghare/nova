@@ -2,13 +2,19 @@ import os
 import asyncio
 import logging
 import pytest
+import json
 from dotenv import load_dotenv
+from unittest.mock import AsyncMock, patch
 
 from nova.agent.agent import Agent
 from nova.core.llm import LLM
 from nova.core.browser import Browser, BrowserConfig
 from nova.core.memory import Memory
 from nova.core.config import AgentConfig
+from nova.agents.task.task_agent import TaskAgent, TaskResult
+from nova.agents.task.config import TaskAgentConfig
+from nova.core.tools import Tool, ToolRegistry
+from nova.core.llm import LLMConfig
 
 logger = logging.getLogger(__name__)
 
@@ -71,57 +77,131 @@ async def integration_agent():
         await agent_instance.stop()
         print("Agent stopped.")
 
+# --- Fixture for Integration TaskAgent --- 
+
+@pytest.fixture(scope="function") # function scope ensures fresh agent for each test
+async def task_agent(request): # request fixture allows passing params
+    """Fixture to create and clean up a TaskAgent instance for integration testing."""
+    
+    task_description = getattr(request, "param", "Navigate to example.com and get the main heading.")
+    task_id = f"integration-test-{request.node.name}" # Unique ID based on test name
+    
+    print(f"\n--- Integration Test: {request.node.name} --- ")
+    print(f"Task: {task_description}")
+
+    agent_instance = None
+    try:
+        # Initialize configs - they will read from .env
+        llm_config = LLMConfig()
+        # Ensure browser is headed for easier debugging if needed, but default to env var or True
+        headless_str = os.getenv("INTEGRATION_BROWSER_HEADLESS", "true").lower()
+        headless = headless_str == 'true'
+        browser_config = BrowserConfig(headless=headless)
+        
+        print(f"Using LLM Provider: {llm_config.primary_provider}")
+        print(f"Using LLM Model: {llm_config.primary_model}")
+        print(f"Browser Headless: {browser_config.headless}")
+        print("-----------------------------------")
+
+        # Create the TaskAgent instance
+        agent_instance = TaskAgent(
+            task_id=task_id,
+            task_description=task_description,
+            llm_config=llm_config,
+            browser_config=browser_config,
+            # Use default Memory and ToolRegistry setup within TaskAgent
+            memory=None,
+            tools=None 
+        )
+        
+        # No need to call start() here, agent.run() handles it.
+        yield agent_instance
+        
+    finally:
+        # Cleanup: Stop the agent (which should stop the browser)
+        if agent_instance:
+            print(f"\n--- Tearing down agent for {request.node.name} ---")
+            try:
+                await agent_instance.stop()
+                print("Agent stopped successfully.")
+            except Exception as e:
+                logger.error(f"Error stopping agent during teardown: {e}", exc_info=True)
+            print("-----------------------------------")
+
 # --- Integration Tests --- 
 
-# @pytest.mark.integration # Temporarily removed
+# Marker to easily run/skip integration tests
+@pytest.mark.integration 
 @pytest.mark.asyncio
-async def test_integration_navigate_and_get_title(integration_agent: Agent):
+@pytest.mark.parametrize(
+    "task_agent", 
+    ["Navigate to https://example.com and tell me the main heading (H1 element)."],
+    indirect=True # Pass the task description to the fixture
+)
+async def test_integration_navigate_and_get_heading(task_agent: TaskAgent):
     """
-    Test the agent's ability to navigate to a URL and identify the page title
-    using the actual LLM and Browser.
+    Test the agent's ability to navigate to example.com and extract the heading
+    using the actual LLM and Browser configured via .env.
     """
-    task = "Navigate to https://example.com and tell me the title of the page."
-    print(f"\nRunning integration test with task: '{task}'")
+    print(f"\nStarting test_integration_navigate_and_get_heading...")
+    timeout = 180.0 # 3 minutes
 
-    # Run the agent
-    # Add a timeout to prevent test hanging indefinitely if LLM/browser has issues
     try:
-        result = await asyncio.wait_for(integration_agent.run(task), timeout=120.0) # 2 min timeout
+        result: TaskResult = await asyncio.wait_for(task_agent.run(), timeout=timeout)
     except asyncio.TimeoutError:
-        pytest.fail("Agent run timed out after 120 seconds.")
+        pytest.fail(f"Agent run timed out after {timeout} seconds.")
         return # Keep type checker happy
 
-    print(f"\nAgent Result:\n{result}")
+    print(f"\nAgent Result:\n{json.dumps(result.dict(), indent=2)}")
 
     # Assertions
     assert result is not None, "Agent did not return a result."
-    # Expect status success because the loop completed, even if halted early
-    assert result.get("status") == "success", f"Agent failed with error: {result.get('error')}"
-    assert "response" in result, "Result missing 'response' key."
-    assert "history" in result, "Result missing 'history' key."
-    history = result["history"]
-    assert isinstance(history, list)
-    assert len(history) == 2 # Should have 2 iterations (navigate, then halt)
-
-    # Check Iteration 1: Navigation
-    navigate_found = any(
-        entry.get("action", {}).get("tool") == "navigate" and
-        "example.com" in entry.get("action", {}).get("input", {}).get("url", "")
-        for entry in history
-    )
-    assert navigate_found, "No navigation step to example.com found in history."
-
-    # Check Iteration 2: Halted due to low confidence
-    assert history[-1].get("confidence", 1.0) < integration_agent.config.confidence_threshold
-    assert history[-1].get("observation", {}).get("status") == "halted"
-    assert "below threshold" in history[-1].get("observation", {}).get("reason", "")
+    assert result.status == "completed", f"Agent did not complete successfully. Status: {result.status}, Error: {result.error}"
+    assert result.error is None, f"Agent finished with an error: {result.error}"
+    assert result.steps_taken > 0, "Agent completed in 0 steps, indicating it might not have run properly."
     
-    # Check final response indicates failure/limitation (fuzzy check)
-    response_lower = result["response"].lower()
-    assert "failed" in response_lower or "unable" in response_lower or "limitation" in response_lower, \
-        f"Expected final response to indicate failure/limitation, but got: {result['response']}"
+    # Check final result data (might vary based on LLM response format)
+    # This requires the LLM to actually return the heading in the final step's result.
+    # We make this check flexible.
+    final_result_str = str(result.result).lower()
+    assert "example domain" in final_result_str, \
+        f"Expected 'Example Domain' to be mentioned in the final result, but got: {result.result}"
 
-    # Check that the loop halted due to low confidence, indicated by the observation status
-    # The last proposed action might have been 'finish' even with low confidence.
-    assert history[-1].get("observation", {}).get("status") == "halted", \
-        f"Expected last observation status to be 'halted' due to low confidence, but got: {history[-1].get('observation', {}).get('status')}"
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "task_agent", 
+    ["Navigate to duckduckgo.com, search for the term 'large language model', and report the title of the first result."],
+    indirect=True
+)
+async def test_integration_search_and_get_first_result(task_agent: TaskAgent):
+    """
+    Test the agent's ability to perform a web search and extract information
+    using the actual LLM and Browser configured via .env.
+    """
+    print(f"\nStarting test_integration_search_and_get_first_result...")
+    timeout = 240.0 # 4 minutes (searches can take longer)
+
+    try:
+        result: TaskResult = await asyncio.wait_for(task_agent.run(), timeout=timeout)
+    except asyncio.TimeoutError:
+        pytest.fail(f"Agent run timed out after {timeout} seconds.")
+        return
+
+    print(f"\nAgent Result:\n{json.dumps(result.dict(), indent=2)}")
+
+    # Assertions
+    assert result is not None, "Agent did not return a result."
+    assert result.status == "completed", f"Agent did not complete successfully. Status: {result.status}, Error: {result.error}"
+    assert result.error is None, f"Agent finished with an error: {result.error}"
+    assert result.steps_taken > 1, "Agent should take multiple steps for searching."
+
+    # Check final result - less strict, just verify it seems plausible
+    final_result_str = str(result.result).lower()
+    assert len(final_result_str) > 5, "Final result seems too short."
+    # Check history for evidence of searching and getting text
+    history_str = json.dumps(result.history).lower()
+    assert "duckduckgo.com" in history_str, "History does not show navigation to DuckDuckGo."
+    assert "search" in history_str or "type" in history_str, "History does not show a search or type action."
+    assert "large language model" in history_str, "Search term missing from history."
+    assert "get_text" in history_str or "extract" in history_str, "History does not show text extraction."

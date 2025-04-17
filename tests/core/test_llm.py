@@ -1,10 +1,12 @@
 import pytest
 import json
+import os
 from typing import List
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch, Mock
 from langchain_core.language_models.chat_models import BaseChatModel
-from nova.core.llm import LangChainAdapter, LLM
+from langchain_core.messages import HumanMessage, AIMessage
+from nova.core.llm import LangChainAdapter, LLM, LLMConfig
 
 
 @pytest.fixture
@@ -13,6 +15,43 @@ def mock_model():
     model = MagicMock(spec=BaseChatModel)
     model.ainvoke = AsyncMock()
     return model
+
+
+@pytest.fixture
+def llm_config_defaults():
+    # Define default parameters used when no env vars are set
+    # Align these with LLMConfig defaults
+    return {
+        "primary_provider": "nvidia_nim",
+        "primary_model": "meta/llama3-70b-instruct",
+        "primary_base_url": None,
+        "primary_api_key": None,
+        "temperature": 0.1,
+        "max_tokens": 4096,
+        "top_p": 0.9,
+        "top_k": 50,
+        "repetition_penalty": 1.1,
+        "streaming": True,
+        "timeout": 30.0,
+        "max_retries": 3,
+        "retry_delay": 1.0,
+        "batch_size": 4
+    }
+
+
+@pytest.fixture
+def mock_chat_model():
+    model = AsyncMock(spec=BaseChatModel)
+    model.invoke.return_value = AIMessage(content="Test response")
+    return model
+
+
+@pytest.fixture
+def llm(llm_config_defaults):
+    # Use defaults for the basic LLM fixture if needed for other tests
+    # Note: Most LLMConfig tests will create their own instance
+    config = LLMConfig(**llm_config_defaults)
+    return LLM(config)
 
 
 @pytest.mark.asyncio
@@ -239,10 +278,176 @@ async def test_generate_plan_model_timeout_simulation():
 
 
 @pytest.mark.asyncio
-async def test_llm_initialization():
-    """Test that the LLM initializes correctly."""
-    llm = LLM()
-    assert llm is not None
+async def test_llm_initialization(llm, llm_config_defaults):
+    """Test that the LLM wrapper initializes correctly."""
+    assert llm.config == llm_config_defaults
+    assert llm.config.primary_provider == "nvidia_nim"
+    assert llm.config.primary_model == "meta/llama3-70b-instruct"
+
+
+@patch('os.getenv')
+def test_llm_config_defaults(mock_getenv, llm_config_defaults):
+    """Test LLMConfig initializes with defaults when no env vars are set."""
+    # Ensure os.getenv returns None for all queried vars to force defaults
+    mock_getenv.return_value = None
+
+    config = LLMConfig()
+
+    # Assert against the defined defaults
+    assert config.primary_provider == llm_config_defaults["primary_provider"]
+    assert config.primary_model == llm_config_defaults["primary_model"]
+    assert config.primary_base_url == llm_config_defaults["primary_base_url"] # Should be None
+    assert config.temperature == llm_config_defaults["temperature"]
+    assert config.max_tokens == llm_config_defaults["max_tokens"]
+    assert config.top_p == llm_config_defaults["top_p"]
+    assert config.top_k == llm_config_defaults["top_k"]
+    assert config.repetition_penalty == llm_config_defaults["repetition_penalty"]
+    assert config.streaming == llm_config_defaults["streaming"]
+    assert config.timeout == llm_config_defaults["timeout"]
+    assert config.max_retries == llm_config_defaults["max_retries"]
+    assert config.retry_delay == llm_config_defaults["retry_delay"]
+    assert config.batch_size == llm_config_defaults["batch_size"]
+    # API key should also be None if not set
+    assert config.primary_api_key is None
+
+
+@patch.dict(os.environ, {
+    "LLM_PROVIDER": "openai",
+    "MODEL_NAME": "gpt-4-turbo",
+    "OPENAI_API_KEY": "sk-testkey123",
+    "MODEL_TEMPERATURE": "0.5",
+    "MODEL_MAX_TOKENS": "2048",
+    "MODEL_ENABLE_STREAMING": "false",
+    "MODEL_TIMEOUT": "60",
+    "MODEL_MAX_RETRIES": "5",
+    "MODEL_RETRY_DELAY": "2.5",
+    "MODEL_BATCH_SIZE": "8",
+    "MODEL_TOP_P": "0.8",
+    "MODEL_TOP_K": "40",
+    "MODEL_REPETITION_PENALTY": "1.2"
+})
+def test_llm_config_from_env():
+    """Test LLMConfig loads correctly from environment variables."""
+    config = LLMConfig()
+
+    assert config.primary_provider == "openai"
+    assert config.primary_model == "gpt-4-turbo"
+    assert config.primary_api_key == "sk-testkey123"
+    assert config.temperature == 0.5
+    assert config.max_tokens == 2048
+    assert config.streaming is False
+    assert config.timeout == 60.0
+    assert config.max_retries == 5
+    assert config.retry_delay == 2.5
+    assert config.batch_size == 8
+    assert config.top_p == 0.8
+    assert config.top_k == 40
+    assert config.repetition_penalty == 1.2
+    assert config.primary_base_url is None # OpenAI base URL not explicitly set here
+
+
+@patch.dict(os.environ, {
+    "LLM_PROVIDER": "nim",
+    "MODEL_NAME": "nvidia/nemotron-test",
+    "NVIDIA_NIM_API_KEY": "nvapi-testkey123",
+    "NVIDIA_NIM_API_BASE_URL": "https://nim.example.com/v1",
+})
+def test_llm_config_nim_provider():
+    """Test LLMConfig specific handling for NIM provider."""
+    config = LLMConfig()
+
+    assert config.primary_provider == "nvidia_nim" # Check alias resolution
+    assert config.primary_model == "nvidia/nemotron-test"
+    assert config.primary_api_key == "nvapi-testkey123"
+    assert config.primary_base_url == "https://nim.example.com/v1"
+
+
+@patch.dict(os.environ, {
+    "LLM_PROVIDER": "nim",
+    "MODEL_NAME": "nvidia/nemotron-test",
+    # Missing NVIDIA_NIM_API_KEY
+})
+def test_llm_config_nim_missing_key_validation():
+    """Test validation fails if NIM provider is used without API key."""
+    with pytest.raises(ValueError, match="NVIDIA_NIM_API_KEY environment variable must be set"):
+        LLMConfig()
+
+@patch.dict(os.environ, {"LLM_PROVIDER": "nim", "NVIDIA_NIM_API_KEY": "dummykey"}) # Minimal valid NIM
+def test_llm_config_nim_default_model_and_url():
+    """Test default model and base URL for NIM if not specified."""
+    config = LLMConfig()
+    # Check against defaults defined in LLMConfig
+    assert config.primary_provider == "nvidia_nim"
+    assert config.primary_model == "meta/llama3-70b-instruct" # Default NIM model
+    assert config.primary_base_url is None # Default NIM URL is None
+
+
+@patch.dict(os.environ, {"LLM_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": "ak-key123"})
+def test_llm_config_other_providers():
+    """Test config loading for a provider other than NIM/OpenAI."""
+    config = LLMConfig()
+    assert config.primary_provider == "anthropic"
+    assert config.primary_api_key == "ak-key123"
+    # Check that a default model is assigned if MODEL_NAME is not set
+    assert config.primary_model == "meta/llama3-70b-instruct" # Should fall back to global default
+
+
+@patch.dict(os.environ, {"MODEL_TEMPERATURE": "2.5"})
+def test_llm_config_invalid_temperature():
+    """Test validation for temperature out of range."""
+    with pytest.raises(ValueError, match="Temperature must be between 0.0 and 2.0"):
+        LLMConfig()
+
+@patch.dict(os.environ, {"MODEL_MAX_TOKENS": "0"})
+def test_llm_config_invalid_max_tokens():
+    """Test validation for max_tokens out of range."""
+    with pytest.raises(ValueError, match="Max tokens must be positive"):
+        LLMConfig()
+
+
+@patch('nova.core.llm.llm.LLM._init_llm') # Patch internal init method
+def test_llm_creation_triggers_init(mock_init, llm_config_defaults):
+    """Test that creating an LLM instance calls its internal _init_llm."""
+    config = LLMConfig(**llm_config_defaults)
+    llm_instance = LLM(config=config)
+    mock_init.assert_called_once()
+
+
+@patch('nova.core.llm.ChatOpenAI')
+def test_llm_generate_text(mock_chat, llm):
+    mock_chat.return_value.invoke.return_value.content = "Test response"
+    response = llm.generate_text("Test prompt")
+    assert response == "Test response"
+    mock_chat.return_value.invoke.assert_called_once()
+
+
+@patch('nova.core.llm.ChatOpenAI')
+def test_llm_generate_plan(mock_chat, llm):
+    mock_chat.return_value.invoke.return_value.content = '{"steps": [{"action": "test"}]}'
+    plan = llm.generate_plan("Test task")
+    assert isinstance(plan, dict)
+    assert "steps" in plan
+    assert len(plan["steps"]) == 1
+    assert plan["steps"][0]["action"] == "test"
+
+
+@patch('nova.core.llm.ChatOpenAI')
+def test_llm_interpret_command(mock_chat, llm):
+    mock_chat.return_value.invoke.return_value.content = '{"command": "test"}'
+    interpretation = llm.interpret_command("Test command")
+    assert isinstance(interpretation, dict)
+    assert "command" in interpretation
+    assert interpretation["command"] == "test"
+
+
+@patch('nova.core.llm.ChatOpenAI')
+def test_llm_generate_recovery_plan(mock_chat, llm):
+    mock_chat.return_value.invoke.return_value.content = '{"recovery_steps": ["step1"]}'
+    recovery_plan = llm.generate_recovery_plan("Test error")
+    assert isinstance(recovery_plan, dict)
+    assert "recovery_steps" in recovery_plan
+    assert len(recovery_plan["recovery_steps"]) == 1
+    assert recovery_plan["recovery_steps"][0] == "step1"
 
 
 @pytest.mark.asyncio

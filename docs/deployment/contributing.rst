@@ -32,11 +32,11 @@ Getting Started
 
 5. Install development dependencies::
 
-      pip install -r requirements-dev.txt
+      pip install -e ".[dev]"
 
 6. Install Playwright browsers::
 
-      playwright install
+      playwright install chromium
 
 Development Workflow
 ------------------
@@ -50,10 +50,10 @@ Development Workflow
 
       pytest
 
-4. Format code::
+4. Run linting and type checking::
 
-      black .
-      isort .
+      make lint
+      make typecheck
 
 5. Commit your changes::
 
@@ -69,34 +69,77 @@ Code Style
 ---------
 
 - Follow PEP 8 guidelines
-- Use type hints
-- Write docstrings for all public functions and classes
-- Keep functions small and focused
-- Write tests for new features
+- Use type hints for all function parameters and return values
+- Write comprehensive docstrings following Google style
+- Keep functions small and focused (max 50 lines)
+- Use meaningful variable and function names
+- Add comments for complex logic
+- Follow the project's import order convention
 
 Testing
 -------
 
-- Write unit tests for new features
-- Ensure all tests pass before submitting a PR
+- Write unit tests for all new features
+- Use pytest fixtures for test setup
+- Mock external dependencies (LLM, browser, etc.)
+- Ensure test coverage remains above 90%
 - Use descriptive test names
-- Mock external dependencies in tests
+- Group related tests in classes
+- Add integration tests for critical paths
 
 Documentation
 ------------
 
-- Update README.md if necessary
-- Add docstrings to new functions and classes
+- Update relevant documentation files
+- Add docstrings to all new functions and classes
 - Update examples if API changes
+- Keep architecture diagrams up to date
+- Document configuration options
+- Add troubleshooting guides for new features
 
 Pull Request Process
 ------------------
 
-1. Ensure your PR description clearly describes the problem and solution
-2. Include relevant tests
-3. Update documentation if necessary
-4. Ensure all CI checks pass
-5. Request review from maintainers
+1. Ensure your PR description:
+   - Clearly describes the problem and solution
+   - Lists all changes made
+   - References related issues
+   - Includes test results
+
+2. Include:
+   - Unit tests for new features
+   - Integration tests for critical paths
+   - Updated documentation
+   - Type hints and docstrings
+
+3. Ensure:
+   - All tests pass
+   - Code is properly formatted
+   - Type checking passes
+   - Documentation is updated
+   - No linting errors
+
+4. Request review from maintainers
+
+Project Structure
+---------------
+
+- ``src/nova/``: Main package code
+  - ``agents/``: Agent implementations
+  - ``core/``: Core components
+  - ``tools/``: Tool implementations
+  - ``config.py``: Configuration management
+
+- ``tests/``: Test suite
+  - ``unit/``: Unit tests
+  - ``integration/``: Integration tests
+  - ``fixtures/``: Test fixtures
+
+- ``docs/``: Documentation
+  - ``api/``: API reference
+  - ``user-guides/``: Usage guides
+  - ``architecture/``: Architecture docs
+  - ``deployment/``: Deployment guides
 
 Questions?
 ----------

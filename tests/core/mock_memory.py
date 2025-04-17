@@ -1,96 +1,35 @@
-"""Mock memory implementation for testing."""
+"""Mock memory for testing."""
 
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+from unittest.mock import AsyncMock
 
-class MockMemory:
-    """Mock memory implementation for testing."""
+from nova.core.memory import Memory
+
+class MockMemory(Memory):
+    """Mock memory for testing."""
     
-    def __init__(self, max_size: int = 1000):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the mock memory."""
-        self.max_size = max_size
-        self._memories = []
-        self._last_cleanup = datetime.now()
+        super().__init__(config or {})
         
-    async def add_memory(
-        self,
-        content: str,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """Add a memory entry."""
-        # Clean up old memories if needed
-        await self._cleanup()
+        # Mock methods
+        self.add = AsyncMock()
+        self.get = AsyncMock(return_value=[])
+        self.clear = AsyncMock()
+        self.get_context = AsyncMock(return_value="Mock context")
         
-        # Add new memory
-        memory = {
-            "content": content,
-            "metadata": metadata or {},
-            "timestamp": datetime.now()
-        }
-        self._memories.append(memory)
+    async def add(self, item: Dict[str, Any]) -> None:
+        """Mock add method."""
+        await self.add(item)
         
-        # Trim if over max size
-        if len(self._memories) > self.max_size:
-            self._memories = self._memories[-self.max_size:]
-            
-    async def get_memories(
-        self,
-        limit: Optional[int] = None,
-        since: Optional[datetime] = None
-    ) -> List[Dict[str, Any]]:
-        """Get memories."""
-        # Clean up old memories
-        await self._cleanup()
+    async def get(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Mock get method."""
+        return await self.get(limit)
         
-        # Filter by timestamp if specified
-        memories = self._memories
-        if since:
-            memories = [
-                m for m in memories
-                if m["timestamp"] >= since
-            ]
-            
-        # Apply limit if specified
-        if limit:
-            memories = memories[-limit:]
-            
-        return memories
-        
-    async def get_context(
-        self,
-        query: str,
-        limit: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
-        """Get relevant context for a query."""
-        # Clean up old memories
-        await self._cleanup()
-        
-        # Simple keyword matching for testing
-        relevant_memories = [
-            m for m in self._memories
-            if any(
-                word.lower() in m["content"].lower()
-                for word in query.split()
-            )
-        ]
-        
-        # Apply limit if specified
-        if limit:
-            relevant_memories = relevant_memories[-limit:]
-            
-        return relevant_memories
-        
-    async def _cleanup(self) -> None:
-        """Clean up old memories."""
-        now = datetime.now()
-        if now - self._last_cleanup > timedelta(hours=1):
-            self._memories = [
-                m for m in self._memories
-                if now - m["timestamp"] < timedelta(days=7)
-            ]
-            self._last_cleanup = now
-            
     async def clear(self) -> None:
-        """Clear all memories."""
-        self._memories = []
-        self._last_cleanup = datetime.now() 
+        """Mock clear method."""
+        await self.clear()
+        
+    async def get_context(self, task: str) -> str:
+        """Mock get_context method."""
+        return await self.get_context(task) 
