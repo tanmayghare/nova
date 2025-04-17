@@ -1,7 +1,8 @@
 """Nova - An autonomous web agent framework."""
 
 from .core.browser import Browser
-from .core.config import AgentConfig, BrowserConfig
+from .core.config import AgentConfig
+from .browser.config import BrowserConfig
 from .core.llm.llm import LLM
 from .core.memory import Memory
 from .core.tools import Tool, ToolRegistry, ToolResult

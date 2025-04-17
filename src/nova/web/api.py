@@ -11,9 +11,8 @@ from pydantic import BaseModel, Field
 
 from nova import __version__
 from ..core.agent import Agent
-from ..core.browser import Browser
+from ..browser.config import BrowserConfig
 from ..core.llm import LLM
-from ..core.config import BrowserConfig
 
 logger = logging.getLogger(__name__)
 

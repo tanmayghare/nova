@@ -2,7 +2,7 @@
 
 from .browser import Browser, BrowserPool
 from .tools import BrowserTools
-from ..config.config import BrowserConfig
+from ...browser.config import BrowserConfig
 
 __all__ = [
     'Browser',

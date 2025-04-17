@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-import asyncio
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 
 from ...core.llm import LLM, LLMConfig
 from ...core.memory import Memory
 from ...core.tools import Tool, ToolRegistry
-from ...core.browser import Browser, BrowserConfig
+from ...browser.config import BrowserConfig
 
 logger = logging.getLogger(__name__)
 

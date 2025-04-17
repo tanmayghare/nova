@@ -2,22 +2,17 @@
 
 from __future__ import annotations
 
-import os
 import logging
 import json
-import time
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from collections import deque
 
-from langchain_core.language_models.chat_models import BaseChatModel
-
-from ...core.config import AgentConfig
-from ...core.config import BrowserConfig
-from ...core.llm import LLM, LLMConfig
+from ...core.llm import LLMConfig
 from ...core.memory import Memory
-from ...core.tools import Tool, ToolRegistry
+from ...core.tools import Tool
 from ...core.browser import Browser
+from ...browser.config import BrowserConfig
 from ..base.base_agent import BaseAgent, AgentState
 
 logger = logging.getLogger(__name__)
