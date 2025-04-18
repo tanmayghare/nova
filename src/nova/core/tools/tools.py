@@ -1,12 +1,9 @@
-from typing import Any, Dict, List, Optional, Type, Union, Callable
-from dataclasses import dataclass
-import json
 import logging
+from typing import Any, Dict, List, Optional, Type, Callable
+from dataclasses import dataclass
 from langchain.tools import BaseTool
-from langchain.tools.render import format_tool_to_openai_function
 from langchain_core.tools import ToolException
 from pydantic import BaseModel, Field, create_model
-import inspect
 
 from .tool import ToolResult
 
@@ -160,21 +157,49 @@ class ToolRegistry:
             "number": float,
             "boolean": bool,
             "array": List,
-            "object": Dict[str, Any]
+            "object": Dict[str, Any],
+            "null": type(None)
         }
-        
-        if "type" in schema:
-            base_type = type_map.get(schema["type"])
-            if base_type is None:
-                raise ValueError(f"Unsupported type: {schema['type']}")
+
+        schema_type = schema.get("type")
+
+        if isinstance(schema_type, list):
+            is_optional = "null" in schema_type
+            non_null_types = [t for t in schema_type if t != "null"]
+
+            if not non_null_types:
+                return type(None)
                 
-            if schema["type"] == "array" and "items" in schema:
+            if len(non_null_types) > 1:
+                logger.warning(f"Multiple non-null types in schema: {non_null_types}. Using first: {non_null_types[0]}")
+                base_type_str = non_null_types[0]
+            else:
+                base_type_str = non_null_types[0]
+
+            base_schema_for_type = schema.copy()
+            base_schema_for_type["type"] = base_type_str
+            resolved_type = self._get_field_type(base_schema_for_type)
+            
+            return Optional[resolved_type] if is_optional else resolved_type
+
+        elif isinstance(schema_type, str):
+            base_type = type_map.get(schema_type)
+            if base_type is None:
+                raise ValueError(f"Unsupported type string: {schema_type}")
+
+            if schema_type == "array" and "items" in schema:
                 item_type = self._get_field_type(schema["items"])
                 return List[item_type]
+            elif schema_type == "object":
+                return Dict[str, Any]
+            else:
+                return base_type
                 
-            return base_type
-            
-        return Any
+        elif schema_type is None:
+            logger.warning(f"No 'type' key found in schema field: {schema}. Defaulting to Any.")
+            return Any
+        else:
+             raise ValueError(f"Invalid schema type value: {schema_type}")
         
     def get_tool_functions(self) -> Dict[str, Dict[str, Any]]:
         """Get descriptions of all registered tools."""

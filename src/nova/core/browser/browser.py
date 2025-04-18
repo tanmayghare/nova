@@ -11,7 +11,7 @@ from playwright.async_api import (
     async_playwright,
 )
 
-from ..config.config import BrowserConfig
+from ...browser.config import BrowserConfig
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,19 @@ class Browser:
         Args:
             config: Browser configuration options
         """
+        logger.debug(f"Browser.__init__ received config type: {type(config)}")
+        if config:
+            logger.debug(f"Browser.__init__ received config dict: {config.model_dump()}")
+            logger.debug(f"Browser.__init__ received config has action_timeout: {hasattr(config, 'action_timeout')}")
+        else:
+            logger.debug("Browser.__init__ received config is None.")
+            
         self.config = config or BrowserConfig()
+        # Log the state *after* self.config is set
+        logger.debug(f"Browser.__init__ self.config set to type: {type(self.config)}")
+        logger.debug(f"Browser.__init__ self.config dict: {self.config.model_dump()}")
+        logger.debug(f"Browser.__init__ self.config has action_timeout: {hasattr(self.config, 'action_timeout')}")
+        
         self._browser: Optional[PlaywrightBrowser] = None
         self._page: Optional[Page] = None
         self._last_used: Optional[datetime] = None
@@ -89,17 +101,20 @@ class Browser:
         logger.info(f"Navigating to URL: {url}")
         try:
             logger.debug(f"Calling page.goto('{url}') with default wait/timeout...")
-            # Use default wait_until and timeout
-            await self._page.goto(url) 
-            # --- Add log IMMEDIATELY after await --- 
-            logger.debug(f"*** page.goto call HAS RETURNED for {url} ***")
-            # --- End Add log ---
+            # Wait for navigation and network idle
+            await self._page.goto(url, wait_until='networkidle', timeout=self.config.action_timeout * 1000)
+            # Wait for JavaScript to finish executing
+            await self._page.wait_for_load_state('domcontentloaded')
+            await self._page.wait_for_load_state('networkidle')
+            # Get and log the page content for debugging
+            content = await self._page.content()
+            logger.debug(f"Page content after navigation:\n{content}")
             self._last_used = datetime.now()
             logger.info(f"Navigation to {url} successful.")
         except Exception as e:
             logger.error(f"Navigation to {url} failed: {e}", exc_info=True)
             self._last_used = datetime.now() 
-            raise 
+            raise
         
     async def click(self, selector: str) -> None:
         """Click an element matching the selector.
@@ -139,28 +154,88 @@ class Browser:
         finally:
             self._last_used = datetime.now()
 
-    async def type(self, selector: str, text: str) -> None:
+    async def type(self, selector: str, text: str, submit: bool = False) -> Dict[str, Any]:
         """Type text into an element matching the selector.
         
         Args:
             selector: CSS selector for the element to type into
             text: Text to type
+            submit: Whether to submit the form after typing
+            
+        Returns:
+            Dictionary containing the result of the typing action
         """
         if not self._page:
-            raise RuntimeError("Browser not started")
+            return {
+                "success": False,
+                "data": {"error": "Browser not started", "selector": selector},
+                "error": "Browser not started"
+            }
             
         logger.info(f"Attempting to type into selector: {selector}")
         try:
-            # Explicitly wait for element to be visible/enabled before filling
-            await self._page.wait_for_selector(selector, state='visible', timeout=self.config.action_timeout * 1000)
-            logger.debug(f"Element '{selector}' is visible, proceeding with fill.")
+            # Wait for the page to be fully loaded
+            await self._page.wait_for_load_state('networkidle')
+            await asyncio.sleep(1)  # Additional wait for dynamic content
             
-            # Add timeout to fill for consistency
-            await self._page.fill(selector, text, timeout=self.config.action_timeout * 1000) 
-            logger.info(f"Successfully typed into selector: {selector}")
+            # Try to handle cookie consent if present
+            try:
+                await self._page.click('button:has-text("Accept")', timeout=5000)
+                await asyncio.sleep(0.5)
+            except Exception:
+                logger.debug("No cookie consent found or already accepted")
+            
+            # Try multiple selectors if the primary one fails
+            selectors_to_try = [
+                selector,
+                'textarea[name="q"]',  # Google sometimes uses textarea
+                'input[name="q"]',  # Google's main search input
+                'input[type="text"]',  # Generic text input
+                'input[aria-label*="Search"]',  # ARIA label
+                'input[title*="Search"]'  # Title attribute
+            ]
+            
+            for current_selector in selectors_to_try:
+                try:
+                    # Wait for element to be visible
+                    await self._page.wait_for_selector(current_selector, state='visible', timeout=5000)
+                    logger.debug(f"Found element with selector: {current_selector}")
+                    
+                    # Try to focus and type
+                    await self._page.focus(current_selector)
+                    await asyncio.sleep(0.5)
+                    await self._page.fill(current_selector, text)
+                    
+                    if submit:
+                        await self._page.keyboard.press('Enter')
+                    
+                    return {
+                        "success": True,
+                        "data": {
+                            "selector": current_selector,
+                            "text": text,
+                            "submitted": submit
+                        },
+                        "error": None
+                    }
+                except Exception as e:
+                    logger.debug(f"Selector {current_selector} failed: {str(e)}")
+                    continue
+            
+            # If we get here, none of the selectors worked
+            return {
+                "success": False,
+                "data": {"error": "Could not find any suitable input element", "selector": selector},
+                "error": "Could not find any suitable input element"
+            }
+            
         except Exception as e:
             logger.error(f"Failed to type into selector '{selector}': {e}", exc_info=True)
-            raise # Re-raise the exception
+            return {
+                "success": False,
+                "data": {"error": str(e), "selector": selector},
+                "error": str(e)
+            }
         finally:
             self._last_used = datetime.now()
         

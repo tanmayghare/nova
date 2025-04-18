@@ -5,20 +5,15 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union, Set
-from pathlib import Path
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 
-from langchain.memory import ConversationBufferMemory, ConversationSummaryMemory
+from langchain.memory import ConversationBufferMemory
 from langchain.schema import BaseMemory
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
-from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
 from ..config.config import MemoryConfig
