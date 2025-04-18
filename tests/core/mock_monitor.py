@@ -11,13 +11,15 @@ class MockMonitor:
         self._metrics = {
             "llm_calls": 0,
             "llm_latency": 0.0,
-            "browser_actions": 0,
-            "browser_latency": 0.0,
+            "tool_calls": 0,
+            "tool_latency": 0.0,
             "memory_operations": 0,
             "memory_latency": 0.0,
             "total_tasks": 0,
             "successful_tasks": 0,
-            "failed_tasks": 0
+            "failed_tasks": 0,
+            "chain_steps": 0,
+            "chain_latency": 0.0
         }
         self._start_time = datetime.now()
         
@@ -37,15 +39,20 @@ class MockMonitor:
         self._metrics["llm_calls"] += 1
         self._metrics["llm_latency"] += latency
         
-    def record_browser_action(self, latency: float) -> None:
-        """Record a browser action."""
-        self._metrics["browser_actions"] += 1
-        self._metrics["browser_latency"] += latency
+    def record_tool_call(self, latency: float) -> None:
+        """Record a tool call."""
+        self._metrics["tool_calls"] += 1
+        self._metrics["tool_latency"] += latency
         
     def record_memory_operation(self, latency: float) -> None:
         """Record a memory operation."""
         self._metrics["memory_operations"] += 1
         self._metrics["memory_latency"] += latency
+        
+    def record_chain_step(self, latency: float) -> None:
+        """Record a chain step."""
+        self._metrics["chain_steps"] += 1
+        self._metrics["chain_latency"] += latency
         
     def get_metrics(self) -> Dict[str, Any]:
         """Get all metrics."""
@@ -55,14 +62,19 @@ class MockMonitor:
                 self._metrics["llm_latency"] / self._metrics["llm_calls"]
             )
             
-        if self._metrics["browser_actions"] > 0:
-            self._metrics["avg_browser_latency"] = (
-                self._metrics["browser_latency"] / self._metrics["browser_actions"]
+        if self._metrics["tool_calls"] > 0:
+            self._metrics["avg_tool_latency"] = (
+                self._metrics["tool_latency"] / self._metrics["tool_calls"]
             )
             
         if self._metrics["memory_operations"] > 0:
             self._metrics["avg_memory_latency"] = (
                 self._metrics["memory_latency"] / self._metrics["memory_operations"]
+            )
+            
+        if self._metrics["chain_steps"] > 0:
+            self._metrics["avg_chain_latency"] = (
+                self._metrics["chain_latency"] / self._metrics["chain_steps"]
             )
             
         # Calculate success rate
@@ -83,12 +95,14 @@ class MockMonitor:
         self._metrics = {
             "llm_calls": 0,
             "llm_latency": 0.0,
-            "browser_actions": 0,
-            "browser_latency": 0.0,
+            "tool_calls": 0,
+            "tool_latency": 0.0,
             "memory_operations": 0,
             "memory_latency": 0.0,
             "total_tasks": 0,
             "successful_tasks": 0,
-            "failed_tasks": 0
+            "failed_tasks": 0,
+            "chain_steps": 0,
+            "chain_latency": 0.0
         }
         self._start_time = datetime.now() 

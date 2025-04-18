@@ -1,63 +1,76 @@
+"""Tests for agent functionality."""
+
 import pytest
-from unittest.mock import Mock, patch
-from nova.core.base_agent import BaseAgent, AgentState
+
+from nova.core.agent.langchain_agent import LangChainAgent
 from nova.core.llm import LLMConfig
-from nova.core.memory import Memory
-from nova.tools.browser_tools import BrowserTools
+from nova.tools.browser import get_browser_tools
 
 @pytest.fixture
 def mock_llm():
-    return Mock()
+    from tests.core.mock_llm import MockLLM
+    return MockLLM()
 
 @pytest.fixture
 def mock_browser():
-    return Mock()
+    from tests.core.mock_browser import MockBrowserTool
+    return MockBrowserTool()
 
 @pytest.fixture
 def mock_memory():
-    return Mock(spec=Memory)
+    from tests.core.mock_memory import MockMemory
+    return MockMemory()
 
 @pytest.fixture
-def agent(mock_llm, mock_browser, mock_memory):
+def mock_monitor():
+    from tests.core.mock_monitor import MockMonitor
+    return MockMonitor()
+
+@pytest.fixture
+def agent(mock_llm, mock_browser, mock_memory, mock_monitor):
     config = LLMConfig(
         provider="openai",
         model_name="gpt-3.5-turbo",
         temperature=0.1,
         max_tokens=1000
     )
-    return BaseAgent(
-        llm_config=config,
+    return LangChainAgent(
+        llm=mock_llm,
         browser=mock_browser,
-        memory=mock_memory
+        memory=mock_memory,
+        monitor=mock_monitor
     )
 
 def test_agent_initialization(agent):
-    assert agent.state == AgentState.IDLE
-    assert agent.llm_config.provider == "openai"
-    assert agent.llm_config.model_name == "gpt-3.5-turbo"
+    assert agent.llm is not None
+    assert agent.browser is not None
+    assert agent.memory is not None
+    assert agent.monitor is not None
 
-def test_agent_start(agent):
-    agent.start()
-    assert agent.state == AgentState.RUNNING
+@pytest.mark.asyncio
+async def test_agent_run(agent):
+    result = await agent.run("Test task")
+    assert result["status"] == "success"
+    assert result["output"] is not None
 
-def test_agent_stop(agent):
-    agent.start()
-    agent.stop()
-    assert agent.state == AgentState.IDLE
+@pytest.mark.asyncio
+async def test_agent_cleanup(agent):
+    await agent.cleanup()
+    assert agent.monitor.get_metrics()["total_tasks"] > 0
 
-def test_agent_cleanup(agent):
-    agent.start()
-    agent.cleanup()
-    assert agent.state == AgentState.IDLE
-    agent.browser.quit.assert_called_once()
+@pytest.mark.asyncio
+async def test_agent_tool_execution(agent):
+    tools = get_browser_tools(agent.browser)
+    agent.tools = tools
+    result = await agent.run("Navigate to example.com")
+    assert result["status"] == "success"
+    assert agent.monitor.get_metrics()["tool_calls"] > 0
 
-def test_agent_register_tools(agent):
-    tools = BrowserTools(agent.browser)
-    agent.register_tools(tools)
-    assert len(agent.tools) > 0
-
-def test_agent_performance_metrics(agent):
-    agent.start()
-    agent.stop()
-    assert agent.performance_metrics["total_runtime"] > 0
-    assert agent.performance_metrics["total_tasks"] == 0 
+@pytest.mark.asyncio
+async def test_agent_performance_metrics(agent):
+    await agent.run("Test task")
+    metrics = agent.monitor.get_metrics()
+    assert metrics["llm_calls"] > 0
+    assert metrics["tool_calls"] > 0
+    assert metrics["memory_operations"] > 0
+    assert metrics["chain_steps"] > 0 

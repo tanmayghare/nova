@@ -2,17 +2,17 @@
 
 import pytest
 import time
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 from nova.core.tools import Tool, ToolRegistry, ToolResult
-from nova.tools.browser_tools import (
+from nova.tools.browser import (
     NavigateTool,
     ClickTool,
     TypeTool,
     GetTextTool,
     GetHtmlTool,
     ScreenshotTool,
-    WaitForSelectorTool,
+    WaitTool,
     ScrollTool
 )
 
@@ -66,7 +66,7 @@ async def test_browser_tools():
     get_text_tool = GetTextTool()
     get_html_tool = GetHtmlTool()
     screenshot_tool = ScreenshotTool()
-    wait_tool = WaitForSelectorTool()
+    wait_tool = WaitTool()
     scroll_tool = ScrollTool()
     
     # Test tool names
@@ -76,7 +76,7 @@ async def test_browser_tools():
     assert get_text_tool.name == "get_text"
     assert get_html_tool.name == "get_html"
     assert screenshot_tool.name == "screenshot"
-    assert wait_tool.name == "wait_for_selector"
+    assert wait_tool.name == "wait"
     assert scroll_tool.name == "scroll"
     
     # Test tool descriptions
