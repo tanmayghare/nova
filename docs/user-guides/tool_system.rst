@@ -1,7 +1,7 @@
 Tool System
 ===========
 
-The Nova tool system provides a flexible framework for creating and executing browser automation tools. This document covers the core concepts, browser tools, and best practices for working with the tool system.
+The Nova tool system provides a flexible framework for creating and executing browser automation tools using LangChain. This document covers the core concepts, browser tools, and best practices for working with the tool system.
 
 Core Concepts
 ------------
@@ -9,11 +9,11 @@ Core Concepts
 Browser Tools
 ~~~~~~~~~~~~
 
-The ``BrowserTools`` class provides a set of tools for browser automation:
+The browser tools are implemented using LangChain's BaseTool class:
 
 .. code-block:: python
 
-    from nova.tools.browser_tools import BrowserTools
+    from nova.tools.browser import get_browser_tools
     from nova.core.browser import Browser
 
     # Initialize browser
@@ -23,13 +23,13 @@ The ``BrowserTools`` class provides a set of tools for browser automation:
         viewport={"width": 1280, "height": 720}
     )
 
-    # Create browser tools
-    tools = BrowserTools(browser)
+    # Get browser tools
+    tools = get_browser_tools(browser)
 
     # Use tools
-    await tools.navigate("https://example.com")
-    await tools.click("#button")
-    await tools.type("#input", "Hello, World!")
+    await tools[0]._arun(url="https://example.com")  # Navigate
+    await tools[1]._arun(selector="#button")  # Click
+    await tools[2]._arun(selector="#input", text="Hello, World!")  # Type
 
 Tool Registration
 ~~~~~~~~~~~~~~~
@@ -43,7 +43,8 @@ Tools are registered with the agent during initialization:
 
     # Initialize components
     memory = Memory()
-    tools = BrowserTools(browser)
+    browser = Browser()
+    tools = get_browser_tools(browser)
 
     # Create agent with tools
     agent = TaskAgent(
@@ -63,16 +64,7 @@ Navigation
 .. code-block:: python
 
     # Navigate to URL
-    await tools.navigate("https://example.com")
-
-    # Navigate back
-    await tools.go_back()
-
-    # Navigate forward
-    await tools.go_forward()
-
-    # Refresh page
-    await tools.refresh()
+    await tools[0]._arun(url="https://example.com")
 
 Element Interaction
 ~~~~~~~~~~~~~~~~~
@@ -80,22 +72,25 @@ Element Interaction
 .. code-block:: python
 
     # Click element
-    await tools.click("#button")
-    await tools.click("button:has-text('Submit')")
+    await tools[1]._arun(selector="#button")
 
     # Type text
-    await tools.type("#input", "Hello, World!")
-    await tools.type("[placeholder='Search']", "query")
+    await tools[2]._arun(selector="#input", text="Hello, World!")
 
-    # Select option
-    await tools.select("#dropdown", "option2")
+    # Get text
+    text = await tools[3]._arun(selector="#content")
 
-    # Check/Uncheck
-    await tools.check("#checkbox")
-    await tools.uncheck("#checkbox")
+    # Get HTML
+    html = await tools[4]._arun()
 
-    # Hover
-    await tools.hover("#menu")
+    # Take screenshot
+    await tools[5]._arun(path="screenshot.png")
+
+    # Wait for element
+    await tools[6]._arun(selector="#loading", timeout=10)
+
+    # Scroll page
+    await tools[7]._arun(direction="down")
 
 Content Retrieval
 ~~~~~~~~~~~~~~~

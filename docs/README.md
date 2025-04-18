@@ -128,9 +128,9 @@ import json
 async def main_advanced():
     # Manual LLM configuration
     llm_config = LLMConfig(
-        primary_provider="nvidia_nim", # Or "openai", "anthropic", etc.
+        primary_provider="nvidia", # Or "openai", "anthropic", etc.
         primary_model="nvidia/llama-3.3-nemotron-super-49b-v1", # Specify your model
-        primary_api_key="YOUR_API_KEY", # Or set NVIDIA_NIM_API_KEY env var
+        primary_api_key="YOUR_API_KEY", # Or set NVIDIA_API_KEY env var
         primary_base_url="YOUR_NIM_ENDPOINT", # Or set NVIDIA_NIM_API_BASE_URL env var
         temperature=0.1,
         max_tokens=4096
@@ -237,10 +237,10 @@ make typecheck
 Nova configuration is primarily managed through environment variables loaded from an `.env` file. See `.env.example` for a full list. Key variables include:
 
 - **LLM Configuration:**
-  - `LLM_PROVIDER`: `nvidia_nim`, `openai`, `anthropic`, etc. (Default: `nvidia_nim`)
+  - `LLM_PROVIDER`: `nvidia`, `openai`, `anthropic`, etc. (Default: `nvidia`)
   - `MODEL_NAME`: Specific model identifier (e.g., `nvidia/llama-3.3-nemotron-super-49b-v1`, `gpt-4-turbo`)
-  - `NVIDIA_NIM_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`: API key for the chosen provider.
-  - `NVIDIA_NIM_API_BASE_URL`: Endpoint for NIM provider (if not default).
+  - `NVIDIA_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`: API key for the chosen provider.
+  - `NVIDIA_API_BASE_URL`: Endpoint for NVIDIA provider (if not default).
   - `MODEL_TEMPERATURE`: (e.g., `0.1`)
   - `MODEL_MAX_TOKENS`: (e.g., `4096`)
   - `MODEL_TOP_P`, `MODEL_TOP_K`, `MODEL_REPETITION_PENALTY`, etc.

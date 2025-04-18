@@ -22,7 +22,7 @@ This is the root directory of the Nova project. For detailed documentation, plea
     cp .env.example .env
     # Edit .env with your values
     ```
-    *Key variables to check:* `LLM_PROVIDER`, `MODEL_NAME`, `NVIDIA_NIM_API_KEY` (if using NIM), `BROWSER_HEADLESS`, etc.
+    *Key variables to check:* `LLM_PROVIDER`, `MODEL_NAME`, `NVIDIA_API_KEY` (if using NIM), `BROWSER_HEADLESS`, etc.
 
 3.  **Run the Example:**
     Execute the example script:

@@ -1,6 +1,8 @@
 API Reference
 ============
 
+This document provides a reference for Nova's API.
+
 Core Classes
 -----------
 
@@ -47,10 +49,36 @@ Browser
 BrowserTools
 ~~~~~~~~~~~
 
-.. autoclass:: nova.tools.browser_tools.BrowserTools
+The browser tools are implemented as LangChain BaseTool instances. To get all available tools:
+
+.. autofunction:: nova.tools.browser.get_browser_tools
+
+Individual Tools
+~~~~~~~~~~~~~~~
+
+.. autoclass:: nova.tools.browser.NavigateTool
    :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autoclass:: nova.tools.browser.ClickTool
+   :members:
+
+.. autoclass:: nova.tools.browser.TypeTool
+   :members:
+
+.. autoclass:: nova.tools.browser.GetTextTool
+   :members:
+
+.. autoclass:: nova.tools.browser.GetHtmlTool
+   :members:
+
+.. autoclass:: nova.tools.browser.ScreenshotTool
+   :members:
+
+.. autoclass:: nova.tools.browser.WaitTool
+   :members:
+
+.. autoclass:: nova.tools.browser.ScrollTool
+   :members:
 
 Memory
 ~~~~~~

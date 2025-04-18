@@ -2,12 +2,19 @@ Usage
 =====
 
 Basic Usage
-----------
+==========
 
-Here's a basic example of how to use Nova:
+This guide covers the basic usage of Nova's browser automation tools.
+
+Getting Started
+--------------
+
+First, import the necessary components:
 
 .. code-block:: python
 
+   from nova.core.browser import Browser
+   from nova.tools.browser import get_browser_tools
    from nova.agents.task.task_agent import TaskAgent
    from nova.core.config import LLMConfig, AgentConfig
    from nova.core.memory import Memory
@@ -25,21 +32,29 @@ Here's a basic example of how to use Nova:
    )
 
    # Initialize components
+   browser = Browser(
+       headless=False,
+       timeout=30,
+       viewport={"width": 1280, "height": 720}
+   )
+
+   # Get browser tools
+   tools = get_browser_tools(browser)
+
    memory = Memory()
    config = AgentConfig(llm_config=llm_config)
 
    # Create task agent
    agent = TaskAgent(
+       task_id="example-task",
+       task_description="Navigate to example.com and click a button",
        llm_config=llm_config,
        memory=memory,
-       tools=None  # Agent will register browser tools automatically
+       tools=tools
    )
 
-   # Run a task
-   result = await agent.run(
-       task="Navigate to example.com and click the first link",
-       task_id="test-001"
-   )
+   # Run the task
+   result = await agent.run()
    print(result)
 
 Configuration
@@ -81,7 +96,7 @@ You can configure the browser using the ``Browser`` class:
 .. code-block:: python
 
    from nova.core.browser import Browser
-   from nova.tools.browser_tools import BrowserTools
+   from nova.tools.browser import get_browser_tools
 
    # Custom browser configuration
    browser = Browser(
@@ -90,8 +105,8 @@ You can configure the browser using the ``Browser`` class:
        viewport={"width": 1280, "height": 720}
    )
 
-   # Create browser tools
-   tools = BrowserTools(browser)
+   # Get browser tools
+   tools = get_browser_tools(browser)
 
    # Initialize agent with custom components
    agent = TaskAgent(
@@ -130,12 +145,12 @@ Nova supports a flexible tool system:
 
 .. code-block:: python
 
-   from nova.tools.browser_tools import BrowserTools
+   from nova.tools.browser import get_browser_tools
    from nova.core.browser import Browser
 
    # Create browser tools
    browser = Browser()
-   tools = BrowserTools(browser)
+   tools = get_browser_tools(browser)
 
    # Register tools with agent
    agent = TaskAgent(
@@ -154,10 +169,7 @@ Nova includes robust error handling:
    from nova.core.exceptions import NovaError, BrowserError, LLMError
 
    try:
-       result = await agent.run(
-           task="Navigate to example.com",
-           task_id="test-001"
-       )
+       result = await agent.run()
    except BrowserError as e:
        print(f"Browser error: {e}")
        # Handle browser-specific errors
@@ -199,3 +211,34 @@ Examples
 --------
 
 See the `examples <https://github.com/your-username/nova/tree/main/examples>`_ directory for more examples. 
+
+Using the Tools
+--------------
+
+The browser tools are implemented as LangChain BaseTool instances. Here's how to use them:
+
+.. code-block:: python
+
+    # Navigate to a URL
+    await tools[0]._arun(url="https://example.com")
+
+    # Click an element
+    await tools[1]._arun(selector="#button")
+
+    # Type text
+    await tools[2]._arun(selector="#input", text="Hello, World!")
+
+    # Get text content
+    text = await tools[3]._arun(selector="#content")
+
+    # Get HTML content
+    html = await tools[4]._arun()
+
+    # Take a screenshot
+    await tools[5]._arun(path="screenshot.png")
+
+    # Wait for an element
+    await tools[6]._arun(selector="#loading", timeout=10)
+
+    # Scroll the page
+    await tools[7]._arun(direction="down") 
