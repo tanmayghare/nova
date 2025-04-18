@@ -1,8 +1,7 @@
 """Tests for the TaskAgent implementation."""
 
 import pytest
-from typing import Any, Dict, List, Optional, Sequence
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Import necessary components
 from nova.core.llm import LLM, LLMConfig

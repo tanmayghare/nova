@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-import json
 
 # Base system message
 SYSTEM_MESSAGE = """You are an autonomous agent that can interact with web browsers and use tools to accomplish tasks.

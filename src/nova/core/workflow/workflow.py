@@ -1,18 +1,19 @@
 """LangGraph workflow implementation for Nova agent."""
 
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
+
 from langgraph.graph import Graph, StateGraph
 from langgraph.prebuilt import ToolExecutor
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
-from ..agents.base.base_agent import BaseAgent, AgentState
+from ..agents import BaseAgent, AgentState
 from ..config.config import AgentConfig
 from ..llm.llm import LLM
 from ..memory.memory import Memory
-from ..tools import Tool, ToolRegistry
+from ..tools import ToolRegistry
 
 class AgentWorkflow:
     """LangGraph workflow for agent execution."""

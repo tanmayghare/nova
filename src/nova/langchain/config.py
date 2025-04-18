@@ -1,19 +1,13 @@
 import os
 from typing import Dict, Any, Optional
+
 from pydantic import BaseModel, Field
-# from langchain.embeddings import HuggingFaceEmbeddings # Keep for potential fallback? No, replace fully for now
 from langchain.vectorstores import FAISS
 from langchain.chat_models import ChatOllama
-# from langchain.llms import Ollama # Unused import
-
-# Import NVIDIA classes
 from langchain_nvidia_ai_endpoints import ChatNVIDIA, NVIDIAEmbeddings
-
-# Import HuggingFaceEmbeddings for fallback or alternative
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 
-# Function to check NVIDIA API Key (avoids running getpass at import time)
 def get_nvidia_api_key() -> Optional[str]:
     key = os.environ.get("NVIDIA_API_KEY")
     if key and key.startswith("nvapi-"):

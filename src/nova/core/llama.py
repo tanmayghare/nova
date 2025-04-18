@@ -12,7 +12,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from cachetools import TTLCache, LRUCache
 
 from .monitoring import PerformanceMonitor
-from .language_model import LanguageModel
+from .llm.language_model import LanguageModel
 from pydantic import BaseModel, Field
 
 # Configure logging
@@ -87,7 +87,7 @@ class LlamaConfig(BaseModel):
         description="Name of the Ollama model to use"
     )
     temperature: float = Field(
-        default=0.2,
+        default=0.1,
         description="Temperature for sampling"
     )
     max_tokens: int = Field(
@@ -134,7 +134,7 @@ class LlamaModel(LanguageModel):
         self,
         model_name: str = "mistral-small3.1:24b-instruct-2503-q4_K_M",
         temperature: float = 0.1,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
         top_p: float = 0.95,
         top_k: int = 40,
         repeat_penalty: float = 1.1,

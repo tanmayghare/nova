@@ -1,11 +1,12 @@
 from typing import List, Optional, Dict, Any
+
+from pydantic import BaseModel, Field
 from langchain.chains import RetrievalQA
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.document_loaders import WebBaseLoader
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain.prompts import PromptTemplate
 from langchain_core.tools import tool
-from pydantic import BaseModel, Field
 
 from .config import LangChainConfig
 

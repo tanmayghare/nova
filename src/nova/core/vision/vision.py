@@ -4,7 +4,7 @@ from typing import Any, Dict
 
 from pydantic import BaseModel, Field
 
-from .llama import LlamaModel
+from nova.core.llm.providers.llama import LlamaModel
 
 
 class VisionConfig(BaseModel):
@@ -14,11 +14,11 @@ class VisionConfig(BaseModel):
         description="Name of the Ollama model to use"
     )
     temperature: float = Field(
-        default=0.7,
+        default=0.1,
         description="Temperature for sampling"
     )
     max_tokens: int = Field(
-        default=2048,
+        default=4096,
         description="Maximum number of tokens to generate"
     )
 
@@ -30,7 +30,7 @@ class VisionModel:
         self,
         model_name: str = "mistral-small3.1:24b-instruct-2503-q4_K_M",
         temperature: float = 0.1,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
     ) -> None:
         """Initialize the vision model.
         

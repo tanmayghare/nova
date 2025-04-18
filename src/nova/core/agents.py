@@ -9,7 +9,7 @@ from .llm import LLM, LLMConfig
 from .memory import Memory
 from .tools import ToolRegistry, ToolConfig
 from .browser import Browser
-from ..tools.browser_tools import get_dom_impl
+from nova.tools.browser import get_browser_tools
 
 logger = logging.getLogger(__name__)
 
@@ -245,7 +245,7 @@ class BaseAgent:
         context = await self.memory.get_context(state.task_description)
         
         # Get current DOM state
-        dom_result = await get_dom_impl(self.browser)
+        dom_result = await get_browser_tools(self.browser)
         dom_content = dom_result.get("dom") if dom_result.get("status") == "success" else None
         if not dom_content:
             logger.warning("Failed to retrieve DOM content.")

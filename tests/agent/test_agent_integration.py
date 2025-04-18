@@ -4,16 +4,14 @@ import logging
 import pytest
 import json
 from dotenv import load_dotenv
-from unittest.mock import AsyncMock, patch
 
-from nova.agent.agent import Agent
+from nova.core.agent import Agent
 from nova.core.llm import LLM
 from nova.core.browser import Browser, BrowserConfig
 from nova.core.memory import Memory
 from nova.core.config import AgentConfig
 from nova.agents.task.task_agent import TaskAgent, TaskResult
 from nova.agents.task.config import TaskAgentConfig
-from nova.core.tools import Tool, ToolRegistry
 from nova.core.llm import LLMConfig
 
 logger = logging.getLogger(__name__)
@@ -26,9 +24,9 @@ async def integration_agent():
     """Fixture to create an Agent instance (function scope) for integration testing."""
     # Configure components (adjust based on user's setup)
     # Example: Use environment variables for LLM config if needed
-    llm_provider = os.getenv("INTEGRATION_LLM_PROVIDER", "nim") # Default to nim
-    llm_model = os.getenv("INTEGRATION_LLM_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1")
-    llm_api_base = os.getenv("INTEGRATION_LLM_API_BASE", "http://localhost:8000")
+    llm_provider = os.getenv("LLM_PROVIDER", "nvidia") # Default to nvidia
+    llm_model = os.getenv("MODEL_NAME", "nvidia/llama-3.3-nemotron-super-49b-v1")
+    llm_api_base = os.getenv("NIM_API_BASE_URL", "http://localhost:8000")
     # Add API key loading if necessary: os.getenv("LLM_API_KEY")
 
     print(f"\n--- Integration Test Setup ---")

@@ -1,11 +1,17 @@
 # run_nova.py
-import asyncio
-import logging
 import os
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Enable LangChain debug mode
+import langchain
+langchain.debug = True
+
+import asyncio
+import logging
+import sys
 
 # Configure basic logging
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -19,10 +25,7 @@ from nova.agents.task.task_agent import TaskAgent
 
 async def main():
     # Define the task for the agent
-    # Simple Example:
     task = "Navigate to example.com, find the main heading, and tell me what it is."
-    # More Complex Example (Requires login details configured if needed):
-    # task = "Go to github.com, search for 'langchain', and click the first repository link."
 
     logger.info(f"Starting Nova Task Agent for task: \"{task}\"")
 
@@ -58,7 +61,7 @@ async def main():
 
     except ValueError as e:
          logger.error(f"Configuration Error: {e}")
-         logger.error("Please ensure your .env file is set up correctly, especially NIM_API_BASE_URL, MODEL_NAME, and NVIDIA_NIM_API_KEY.")
+         logger.error("Please ensure your .env file is set up correctly, especially NIM_API_BASE_URL, MODEL_NAME, and NVIDIA_API_KEY.")
     except ImportError as e:
          logger.error(f"Import Error: {e}")
          logger.error("Make sure all dependencies are installed correctly (`pip install -e \".[dev]\"`) including `langchain-nvidia-ai-endpoints`.")

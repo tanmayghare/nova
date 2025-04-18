@@ -1,12 +1,13 @@
-import json
 import logging
+import re
+import json
 from typing import Dict, Any
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse
-from .llm import LLM
-from .browser import Browser
-from .exceptions import TaskExecutionError
-import re
+
+from nova.core.llm import LLM
+from nova.core.browser import Browser
+from nova.core.exceptions import TaskExecutionError
 
 logger = logging.getLogger(__name__)
 

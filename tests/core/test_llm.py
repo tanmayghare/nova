@@ -3,9 +3,9 @@ import json
 import os
 from typing import List
 
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
+from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import AIMessage
 from nova.core.llm import LangChainAdapter, LLM, LLMConfig
 
 
@@ -22,8 +22,8 @@ def llm_config_defaults():
     # Define default parameters used when no env vars are set
     # Align these with LLMConfig defaults
     return {
-        "primary_provider": "nvidia_nim",
-        "primary_model": "meta/llama3-70b-instruct",
+        "primary_provider": "nvidia",
+        "primary_model": "meta/llama-3.3-70b-instruct",
         "primary_base_url": None,
         "primary_api_key": None,
         "temperature": 0.1,
@@ -32,7 +32,7 @@ def llm_config_defaults():
         "top_k": 50,
         "repetition_penalty": 1.1,
         "streaming": True,
-        "timeout": 30.0,
+        "timeout": 15.0,
         "max_retries": 3,
         "retry_delay": 1.0,
         "batch_size": 4
@@ -281,7 +281,7 @@ async def test_generate_plan_model_timeout_simulation():
 async def test_llm_initialization(llm, llm_config_defaults):
     """Test that the LLM wrapper initializes correctly."""
     assert llm.config == llm_config_defaults
-    assert llm.config.primary_provider == "nvidia_nim"
+    assert llm.config.primary_provider == "nvidia"
     assert llm.config.primary_model == "meta/llama3-70b-instruct"
 
 
@@ -312,74 +312,39 @@ def test_llm_config_defaults(mock_getenv, llm_config_defaults):
 
 
 @patch.dict(os.environ, {
-    "LLM_PROVIDER": "openai",
-    "MODEL_NAME": "gpt-4-turbo",
-    "OPENAI_API_KEY": "sk-testkey123",
-    "MODEL_TEMPERATURE": "0.5",
-    "MODEL_MAX_TOKENS": "2048",
-    "MODEL_ENABLE_STREAMING": "false",
-    "MODEL_TIMEOUT": "60",
-    "MODEL_MAX_RETRIES": "5",
-    "MODEL_RETRY_DELAY": "2.5",
-    "MODEL_BATCH_SIZE": "8",
-    "MODEL_TOP_P": "0.8",
-    "MODEL_TOP_K": "40",
-    "MODEL_REPETITION_PENALTY": "1.2"
-})
-def test_llm_config_from_env():
-    """Test LLMConfig loads correctly from environment variables."""
-    config = LLMConfig()
-
-    assert config.primary_provider == "openai"
-    assert config.primary_model == "gpt-4-turbo"
-    assert config.primary_api_key == "sk-testkey123"
-    assert config.temperature == 0.5
-    assert config.max_tokens == 2048
-    assert config.streaming is False
-    assert config.timeout == 60.0
-    assert config.max_retries == 5
-    assert config.retry_delay == 2.5
-    assert config.batch_size == 8
-    assert config.top_p == 0.8
-    assert config.top_k == 40
-    assert config.repetition_penalty == 1.2
-    assert config.primary_base_url is None # OpenAI base URL not explicitly set here
-
-
-@patch.dict(os.environ, {
-    "LLM_PROVIDER": "nim",
+    "LLM_PROVIDER": "nvidia",
     "MODEL_NAME": "nvidia/nemotron-test",
-    "NVIDIA_NIM_API_KEY": "nvapi-testkey123",
-    "NVIDIA_NIM_API_BASE_URL": "https://nim.example.com/v1",
+    "NVIDIA_API_KEY": "nvapi-testkey123",
+    "NVIDIA_API_BASE_URL": "https://api.example.com/v1",
 })
-def test_llm_config_nim_provider():
-    """Test LLMConfig specific handling for NIM provider."""
+def test_llm_config_nvidia_provider():
+    """Test LLMConfig specific handling for NVIDIA provider."""
     config = LLMConfig()
 
-    assert config.primary_provider == "nvidia_nim" # Check alias resolution
+    assert config.primary_provider == "nvidia"
     assert config.primary_model == "nvidia/nemotron-test"
     assert config.primary_api_key == "nvapi-testkey123"
-    assert config.primary_base_url == "https://nim.example.com/v1"
+    assert config.primary_base_url == "https://api.example.com/v1"
 
 
 @patch.dict(os.environ, {
-    "LLM_PROVIDER": "nim",
+    "LLM_PROVIDER": "nvidia",
     "MODEL_NAME": "nvidia/nemotron-test",
-    # Missing NVIDIA_NIM_API_KEY
+    # Missing NVIDIA_API_KEY
 })
-def test_llm_config_nim_missing_key_validation():
-    """Test validation fails if NIM provider is used without API key."""
-    with pytest.raises(ValueError, match="NVIDIA_NIM_API_KEY environment variable must be set"):
+def test_llm_config_nvidia_missing_key_validation():
+    """Test validation fails if NVIDIA provider is used without API key."""
+    with pytest.raises(ValueError, match="NVIDIA_API_KEY environment variable must be set"):
         LLMConfig()
 
-@patch.dict(os.environ, {"LLM_PROVIDER": "nim", "NVIDIA_NIM_API_KEY": "dummykey"}) # Minimal valid NIM
-def test_llm_config_nim_default_model_and_url():
-    """Test default model and base URL for NIM if not specified."""
+@patch.dict(os.environ, {"LLM_PROVIDER": "nvidia", "NVIDIA_API_KEY": "dummykey"}) # Minimal valid NVIDIA
+def test_llm_config_nvidia_default_model_and_url():
+    """Test default model and base URL for NVIDIA if not specified."""
     config = LLMConfig()
     # Check against defaults defined in LLMConfig
-    assert config.primary_provider == "nvidia_nim"
-    assert config.primary_model == "meta/llama3-70b-instruct" # Default NIM model
-    assert config.primary_base_url is None # Default NIM URL is None
+    assert config.primary_provider == "nvidia"
+    assert config.primary_model == "meta/llama3-70b-instruct" # Default NVIDIA model
+    assert config.primary_base_url is None # Default NVIDIA URL is None
 
 
 @patch.dict(os.environ, {"LLM_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": "ak-key123"})

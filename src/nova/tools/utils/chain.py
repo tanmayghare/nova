@@ -3,8 +3,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
-from nova.tools.base.tool import ToolResult
-from nova.tools.base.registry import ToolRegistry
+from nova.core.tools.tool import ToolResult
+from nova.core.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 

@@ -10,9 +10,8 @@ from nova.core.browser import Browser
 from nova.core.llm import LLMConfig
 from nova.core.agents import TaskAgent, AgentConfig
 from nova.core.tools import ToolRegistry
-from nova.tools.browser_tools import register_browser_tools
+from nova.tools.browser import get_browser_tools
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -39,17 +38,18 @@ async def run_agent(task: str, headless: bool = True) -> Optional[str]:
         registry = ToolRegistry()
         
         # Register browser tools
-        register_browser_tools(registry, browser)
+        browser_tools = get_browser_tools(browser)
+        for tool in browser_tools:
+            registry.register_tool(tool)
+            logger.info(f"Registered browser tool: {tool.name}")
         
-        # Configure LLM with NVIDIA NIM as primary provider
+        # Configure LLM with NVIDIA as primary provider
         llm_config = LLMConfig(
-            # Primary provider (NVIDIA NIM)
-            primary_provider="nvidia_nim",
-            primary_model="llama-3.3-nemotron-super-49b-v1",
-            primary_base_url=os.getenv("NVIDIA_NIM_BASE_URL", "http://localhost:8000"),
-            primary_api_key=os.getenv("NVIDIA_NIM_API_KEY"),
+            primary_provider="nvidia",
+            primary_model="llama-3.3-70b-instruct",
+            primary_base_url=os.getenv("NVIDIA_API_BASE_URL", "http://localhost:8000"),
+            primary_api_key=os.getenv("NVIDIA_API_KEY"),
             
-            # Fallback providers
             fallback_providers={
                 "openai": {
                     "model_name": "gpt-4-turbo-preview",
@@ -65,9 +65,9 @@ async def run_agent(task: str, headless: bool = True) -> Optional[str]:
             
             # Common parameters
             temperature=0.1,
-            max_tokens=2048,
-            streaming=False,
-            timeout=30
+            max_tokens=4096,
+            streaming=True,
+            timeout=15
         )
         
         # Configure agent
@@ -99,7 +99,17 @@ async def run_agent(task: str, headless: bool = True) -> Optional[str]:
             await browser.stop()
 
 def main():
-    """Main entry point for the Nova CLI."""
+    """Main entry point for the CLI."""
+    # Initialize components
+    registry = ToolRegistry()
+    browser = Browser()
+    
+    # Register browser tools
+    browser_tools = get_browser_tools(browser)
+    for tool in browser_tools:
+        registry.register_tool(tool)
+        logger.info(f"Registered browser tool: {tool.name}")
+
     parser = argparse.ArgumentParser(description="Nova - AI-powered Autonomous Browser Agent")
     
     parser.add_argument(
@@ -121,8 +131,8 @@ def main():
     
     parser.add_argument(
         "--provider",
-        choices=["nvidia_nim", "openai", "google"],
-        default="nvidia_nim",
+        choices=["nvidia", "openai", "google"],
+        default="nvidia",
         help="Specify the primary LLM provider to use"
     )
     

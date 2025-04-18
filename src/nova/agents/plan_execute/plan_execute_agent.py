@@ -8,12 +8,11 @@ from typing import Any, Dict, List, Optional
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import BaseTool
-from langchain_core.output_parsers import JsonOutputParser
 
-from ...core.llm import LLM, LLMConfig
+from ...core.llm import LLMConfig
 from ...core.memory import Memory
-from ...core.tools import Tool, ToolRegistry
-from ...core.browser import Browser, BrowserConfig
+from ...core.tools import Tool
+from ...core.browser import BrowserConfig
 from ..base.base_agent import BaseAgent, AgentState
 from .config import PlanExecuteAgentConfig
 

@@ -1,7 +1,7 @@
 import time
 from typing import Any, Dict
 
-from nova.tools.base.tool import BaseTool, ToolConfig, ToolResult
+from nova.core.tools.tool import BaseTool, ToolConfig, ToolResult
 
 
 class ExampleAPITool(BaseTool):
