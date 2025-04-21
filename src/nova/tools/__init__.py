@@ -1,18 +1,7 @@
-"""Tools package."""
+"""Tools package for Nova - contains specific tool implementations."""
 
-from .base.tool import BaseTool, ToolResult
-from .base.registry import ToolRegistry
-from .utils.config import AdvancedToolConfig as ToolConfig
-from .utils.config import ConfigurationManager as ToolConfigManager
-from .utils.metrics import MetricsCollector
-from .utils.user_tools import UserToolManager
+# This __init__.py primarily serves to mark the directory as a package.
+# Specific tools or tool groups should be imported directly from their submodules,
+# e.g., from nova.tools.utils.web_search import WebSearchTool
 
-__all__ = [
-    'BaseTool',
-    'ToolResult',
-    'ToolConfig',
-    'ToolConfigManager',
-    'ToolRegistry',
-    'MetricsCollector',
-    'UserToolManager',
-] 
+__all__ = [] # Keep empty or list submodules like ['browser', 'utils'] if needed elsewhere 

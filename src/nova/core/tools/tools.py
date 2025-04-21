@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Type, Callable
 from dataclasses import dataclass
 from langchain.tools import BaseTool
 from langchain_core.tools import ToolException
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, Field, create_model, ValidationError
 
 from .tool import ToolResult
 
@@ -135,15 +135,24 @@ class ToolRegistry:
     ) -> Type[BaseModel]:
         """Create a Pydantic model from a JSON schema."""
         fields = {}
+        required_fields = schema.get("required", []) # Get the list of required fields
         
         if "properties" in schema:
             for field_name, field_schema in schema["properties"].items():
                 field_type = self._get_field_type(field_schema)
+                
+                # Determine the default value based on whether the field is required
+                if field_name in required_fields:
+                    field_default = ... # Ellipsis marks field as required by Pydantic
+                else:
+                    field_default = None # None marks field as optional by Pydantic
+                    
                 fields[field_name] = (
                     field_type,
                     Field(
                         description=field_schema.get("description", ""),
-                        default=field_schema.get("default", ...)
+                        # Use the determined default value
+                        default=field_default
                     )
                 )
                 
@@ -232,27 +241,70 @@ class ToolRegistry:
             validated_input = input_model(**input_data)
             
             # Execute tool
-            if tool.config.func is None:
-                raise ValueError(f"Tool '{tool_name}' has no implementation")
-                
-            if tool.config.is_async:
-                result = await tool.config.func(**validated_input.dict())
+            # Check if the tool object itself has an execute method (preferred)
+            if hasattr(tool, 'execute') and callable(tool.execute):
+                 logger.debug(f"Executing tool '{tool_name}' via its execute() method.")
+                 # Assuming the execute method handles async internally if needed
+                 # and expects the raw input dict (or validated Pydantic model)
+                 # Let's pass the validated model dump for consistency
+                 result = await tool.execute(validated_input.model_dump()) 
+            # Fallback: Execute via function specified in config.func
+            elif tool.config.func is not None:
+                 logger.debug(f"Executing tool '{tool_name}' via config.func.")
+                 if tool.config.is_async:
+                      result = await tool.config.func(**validated_input.model_dump())
+                 else:
+                      result = tool.config.func(**validated_input.model_dump())
             else:
-                result = tool.config.func(**validated_input.dict())
-                
-            # Convert ToolResult to dict if needed
-            if hasattr(result, 'to_dict'):
-                result_dict = result.to_dict()
+                 # If neither execute() nor config.func exists, then no implementation
+                 raise ValueError(f"Tool '{tool_name}' has no implementation (no execute method or config.func)")
+
+            # Prepare dictionary for output validation
+            output_data_to_validate = {}
+            if isinstance(result, ToolResult): 
+                # If ToolResult, validate its DATA field against the output schema
+                output_data_to_validate = result.data if result.data is not None else {}
+            elif isinstance(result, dict):
+                # If raw dict returned (e.g., from config.func), validate it directly
+                output_data_to_validate = result
             else:
-                result_dict = result
-                
-            # Validate output
-            validated_output = output_model(**result_dict)
-            return validated_output.dict()
+                # Handle non-dict/non-ToolResult returns
+                logger.warning(f"Tool '{tool_name}' returned unexpected type {type(result)}. Wrapping in data dict for validation.")
+                # Attempt a basic wrapping, might fail validation if schema is complex
+                output_data_to_validate = {"success": True, "data": result} # Wrap based on schema?
+
+            # Validate output against the defined output_schema
+            logger.debug(f"Validating output data for tool '{tool_name}': {output_data_to_validate}")
+            validated_output = output_model(**output_data_to_validate)
             
+            # If the original result was a ToolResult, return its full dictionary representation.
+            # Otherwise, assume the raw dict result IS the final structure.
+            if isinstance(result, ToolResult):
+                # Update the data field with the validated version, just in case validation did coercion
+                result.data = validated_output.model_dump()
+                return result.to_dict() # Return the whole ToolResult structure
+            else:
+                 # Assume the raw dict (output_data_to_validate) passed validation and is the intended full result.
+                 # Re-validate the whole thing? Or trust it? Let's return it as is.
+                 # If it was a raw dict, validated_output is that dict. 
+                 # Return the result that passed validation.
+                 return validated_output.model_dump()
+            
+        except ValidationError as ve:
+            logger.error(f"Tool '{tool_name}' output validation failed: {ve}", exc_info=True)
+            # Construct a standard error ToolResult dict to return
+            error_detail = f"Output validation failed: {ve}"
+            # If original result was ToolResult and had an error, prioritize that?
+            original_error = getattr(result, 'error', None) if isinstance(result, ToolResult) else None
+            if original_error:
+                 error_detail = f"Original tool error: {original_error}; Output validation failed: {ve}"
+            # IMPORTANT: We need to return a dict here, not raise, so the agent can handle it.
+            # Return a structure indicating failure, matching expected error format if possible.
+            return {"success": False, "status": "error", "error": error_detail} 
         except Exception as e:
-            logger.error(f"Tool execution failed: {e}", exc_info=True)
-            raise
+            logger.error(f"Tool '{tool_name}' execution failed: {e}", exc_info=True)
+            # IMPORTANT: Return a dict here, not raise.
+            return {"success": False, "status": "error", "error": f"Tool execution failed: {str(e)}"}
             
     def get_langchain_tools(self) -> List[BaseTool]:
         """Convert registered tools to LangChain tools."""

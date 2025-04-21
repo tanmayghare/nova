@@ -1,12 +1,11 @@
-"""Tools module for Nova."""
+"""Core Tools infrastructure for Nova."""
 
 from .tools import Tool, ToolConfig, ToolRegistry
-from .tool import BaseTool, ToolResult
+from .tool import ToolResult
 
 __all__ = [
     'Tool',
     'ToolConfig',
     'ToolRegistry',
-    'BaseTool',
     'ToolResult'
 ] 
