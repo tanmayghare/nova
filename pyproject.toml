@@ -97,4 +97,9 @@ module = [
     "langchain.*",
     "pydantic.*"
 ]
-ignore_missing_imports = true 
+ignore_missing_imports = true
+
+[tool.poetry.dependencies]
+python = "^3.10"
+# ... other dependencies
+httpx = "^0.27.0"

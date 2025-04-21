@@ -12,6 +12,7 @@ langchain.debug = True
 import asyncio
 import logging
 import sys
+import argparse # Import argparse
 
 # Configure basic logging
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -21,11 +22,29 @@ logger = logging.getLogger("NovaRun")
 # Import necessary Nova components AFTER loading .env
 from nova.core.llm.llm import LLMConfig
 from nova.core.browser import BrowserConfig
-from nova.agents.task.task_agent import TaskAgent
+from nova.core.agents import TaskAgent
 
 async def main():
-    # Define the task for the agent
-    task = "Navigate to example.com, find the main heading, and tell me what it is."
+    # Load environment variables
+    load_dotenv()
+    
+    # Setup argument parsing
+    parser = argparse.ArgumentParser(description="Run the Nova agent with a specified task.")
+    parser.add_argument(
+        "task", 
+        type=str, 
+        nargs='?', # Make the task argument optional
+        default="Navigate to example.com, find the main heading, and tell me what it is.", # Default task
+        help="The task description for the Nova agent to perform."
+    )
+    args = parser.parse_args()
+    task = args.task
+
+    # Setup basic logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # Define the task for the agent (Now comes from args)
+    # task = "Navigate to example.com, find the main heading, and tell me what it is."
 
     logger.info(f"Starting Nova Task Agent for task: \"{task}\"")
 
@@ -64,13 +83,17 @@ async def main():
          logger.error("Please ensure your .env file is set up correctly, especially NIM_API_BASE_URL, MODEL_NAME, and NVIDIA_API_KEY.")
     except ImportError as e:
          logger.error(f"Import Error: {e}")
-         logger.error("Make sure all dependencies are installed correctly (`pip install -e \".[dev]\"`) including `langchain-nvidia-ai-endpoints`.")
+         logger.error("Make sure all dependencies are installed correctly (`pip install -e \".[dev]\") including `langchain-nvidia-ai-endpoints`.")
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}") # Log full traceback
     finally:
         # Ensure proper cleanup
-        if 'agent' in locals():
+        if 'agent' in locals() and hasattr(agent, 'stop'): # Check if stop method exists
+            logger.info("Attempting agent cleanup...")
             await agent.stop()
+            logger.info("Agent cleanup finished.")
+        else:
+            logger.warning("Agent object not found or does not have a stop method for cleanup.")
 
 if __name__ == "__main__":
     try:
