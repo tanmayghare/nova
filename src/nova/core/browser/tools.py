@@ -1,9 +1,13 @@
 """Browser tools for Nova."""
 
+import logging
 from typing import Dict, Optional
 from .browser import Browser
 from ..tools import Tool, ToolResult
 from ..tools.tools import ToolConfig
+import base64
+
+logger = logging.getLogger(__name__)
 
 class BrowserTools(Tool):
     """Browser tools for web automation."""
@@ -14,83 +18,56 @@ class BrowserTools(Tool):
         Args:
             browser: Browser instance to use
         """
-        config = ToolConfig(
+        # Initialize with a ToolConfig for the suite itself (can be minimal)
+        suite_config = ToolConfig(
             name="browser_tools",
-            description="Tools for browser automation",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "URL to navigate to"},
-                    "selector": {"type": "string", "description": "CSS selector for element"},
-                    "text": {"type": "string", "description": "Text to type"},
-                    "timeout": {"type": "number", "description": "Timeout in seconds"}
-                }
-            },
-            output_schema={
-                "type": "object",
-                "properties": {
-                    "success": {"type": "boolean"},
-                    "data": {
-                        "type": "object",
-                        "properties": {
-                            "url": {"type": "string"},
-                            "status": {"type": "string"},
-                            "message": {"type": "string"}
-                        }
-                    },
-                    "error": {"type": "string"}
-                }
-            }
+            description="Tools for interacting with a web browser.",
+            input_schema={},
+            output_schema={}
         )
-        super().__init__(config)
+        super().__init__(suite_config)
         self.browser = browser
         
-        # Register individual tools
-        self.tools = {
+        # Define sub-tools with their specific configurations
+        self.tools: Dict[str, ToolConfig] = {
             "navigate": ToolConfig(
                 name="navigate",
-                description="Navigate to a URL",
+                description="Navigate the browser to a specific URL.",
                 input_schema={
                     "type": "object",
                     "properties": {
-                        "url": {"type": "string", "description": "URL to navigate to"}
+                        "url": {"type": "string", "description": "The URL to navigate to."}
                     },
                     "required": ["url"]
                 },
                 output_schema={
                     "type": "object",
                     "properties": {
-                        "success": {"type": "boolean"},
-                        "data": {
-                            "type": "object",
-                            "properties": {
-                                "url": {"type": "string"},
-                                "status": {"type": "string"},
-                                "message": {"type": "string"}
-                            }
-                        },
-                        "error": {"type": "string"}
-                    }
+                        "status": {"type": "string", "description": "Navigation status ('success' or 'error')."},
+                        "url": {"type": "string", "description": "The final URL after navigation."},
+                        "error": {"type": ["string", "null"], "description": "Error message if navigation failed."}
+                    },
+                    "required": ["status", "url"]
                 },
                 func=self.navigate,
                 is_async=True
             ),
             "click": ToolConfig(
                 name="click",
-                description="Click an element",
+                description="Click on an element specified by a CSS selector.",
                 input_schema={
                     "type": "object",
                     "properties": {
-                        "selector": {"type": "string", "description": "CSS selector for element"}
+                        "selector": {"type": "string", "description": "CSS selector of the element to click."}
                     },
                     "required": ["selector"]
                 },
                 output_schema={
                     "type": "object",
                     "properties": {
-                        "success": {"type": "boolean"},
-                        "data": {"type": "object"},
-                        "error": {"type": "string"}
+                        "status": {"type": "string", "description": "Click status ('success' or 'error')."},
+                        "selector": {"type": "string", "description": "The selector used."},
+                        "error": {"type": ["string", "null"], "description": "Error message if click failed."}
                     }
                 },
                 func=self.click,
@@ -98,131 +75,118 @@ class BrowserTools(Tool):
             ),
             "type": ToolConfig(
                 name="type",
-                description="Type text into an element",
+                description="Type text into an element specified by a CSS selector. Optionally submit the form.",
                 input_schema={
                     "type": "object",
                     "properties": {
-                        "selector": {"type": "string", "description": "CSS selector for element"},
-                        "text": {"type": "string", "description": "Text to type"}
+                        "selector": {"type": "string", "description": "CSS selector of the input element."},
+                        "text": {"type": "string", "description": "The text to type."},
+                        "submit": {"type": "boolean", "description": "Whether to press Enter after typing.", "default": False}
                     },
                     "required": ["selector", "text"]
                 },
                 output_schema={
                     "type": "object",
                     "properties": {
-                        "success": {"type": "boolean"},
-                        "data": {"type": "object"},
-                        "error": {"type": "string"}
+                        "status": {"type": "string", "description": "Type action status ('success' or 'error')."},
+                        "selector": {"type": "string", "description": "The selector used."},
+                        "text_typed": {"type": "string", "description": "The text that was typed."},
+                        "submitted": {"type": "boolean", "description": "If Enter was pressed."},
+                        "error": {"type": ["string", "null"], "description": "Error message if typing failed."}
                     }
                 },
                 func=self.type,
+                is_async=True
+            ),
+            "get_text": ToolConfig(
+                name="get_text",
+                description="Get the text content of an element specified by a CSS selector.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "selector": {"type": "string", "description": "CSS selector of the element."}
+                    },
+                    "required": ["selector"]
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string", "description": "Get text status ('success' or 'error')."},
+                        "selector": {"type": "string", "description": "The selector used."},
+                        "text": {"type": ["string", "null"], "description": "The extracted text content."},
+                        "error": {"type": ["string", "null"], "description": "Error message if failed."}
+                    }
+                },
+                func=self.get_text,
+                is_async=True
+            ),
+            "wait": ToolConfig(
+                name="wait",
+                description="Wait for an element specified by a CSS selector to appear on the page.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "selector": {"type": "string", "description": "CSS selector of the element to wait for."},
+                        "timeout": {"type": "number", "description": "Maximum time to wait in seconds.", "default": 10.0}
+                    },
+                    "required": ["selector"]
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string", "description": "Wait status ('success' or 'error')."},
+                        "selector": {"type": "string", "description": "The selector waited for."},
+                        "error": {"type": ["string", "null"], "description": "Error message if timeout or other error occurred."}
+                    }
+                },
+                func=self.wait,
+                is_async=True
+            ),
+            "screenshot": ToolConfig(
+                name="screenshot",
+                description="Take a screenshot of the current page. Returns bytes if no path is provided.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": ["string", "null"], "description": "Optional file path to save the screenshot. If null, returns bytes.", "default": None}
+                    }
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string", "description": "Screenshot status ('success' or 'error')."},
+                        "path": {"type": ["string", "null"], "description": "Path where screenshot was saved, if provided."},
+                        "screenshot_bytes": {"type": ["string", "null"], "description": "Base64 encoded screenshot bytes, if path was null."},
+                        "error": {"type": ["string", "null"], "description": "Error message if failed."}
+                    }
+                },
+                func=self.screenshot,
+                is_async=True
+            ),
+            "get_dom_snapshot": ToolConfig(
+                name="get_dom_snapshot",
+                description="Get a snapshot of the current page's full DOM structure.",
+                input_schema={
+                    "type": "object",
+                    "properties": {}
+                },
+                output_schema={
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string", "description": "DOM snapshot status ('success' or 'error')."},
+                        "dom_snapshot": {"type": ["string", "null"], "description": "The full HTML source of the page."},
+                        "error": {"type": ["string", "null"], "description": "Error message if failed."}
+                    }
+                },
+                func=self.get_dom_snapshot,
                 is_async=True
             )
         }
         
     def get_tool_configs(self) -> Dict[str, ToolConfig]:
         """Returns the dictionary of individual tool configurations."""
-        # Add other browser actions (get_text, wait, screenshot, etc.) here
-        # Example for get_text:
-        self.tools["get_text"] = ToolConfig(
-            name="get_text",
-            description="Extract text content from an element",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "selector": {"type": "string", "description": "CSS selector for element"}
-                },
-                "required": ["selector"]
-            },
-            output_schema={
-                "type": "object",
-                "properties": {
-                    "success": {"type": "boolean"},
-                    "data": {
-                        "type": "object", 
-                        "properties": {
-                             "text": {"type": ["string", "null"]}
-                        }
-                    },
-                    "error": {"type": ["string", "null"]}
-                }
-            },
-            func=self.get_text,
-            is_async=True
-        )
-        # Add wait
-        self.tools["wait"] = ToolConfig(
-            name="wait",
-            description="Wait for an element to appear",
-             input_schema={
-                 "type": "object",
-                 "properties": {
-                     "selector": {"type": "string", "description": "CSS selector for element"},
-                     "timeout": {"type": "number", "description": "Timeout in seconds", "default": 10.0}
-                 },
-                 "required": ["selector"]
-             },
-             output_schema={
-                 "type": "object",
-                 "properties": {
-                     "success": {"type": "boolean"},
-                     "data": {"type": "object"}, # Empty data obj on success
-                     "error": {"type": ["string", "null"]}
-                 }
-             },
-            func=self.wait,
-            is_async=True
-        )
-        # Add screenshot
-        self.tools["screenshot"] = ToolConfig(
-            name="screenshot",
-            description="Take a screenshot of the current page",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "path": {"type": ["string", "null"], "description": "Optional path to save screenshot"}
-                }
-                # No required fields
-            },
-            output_schema={
-                "type": "object",
-                "properties": {
-                    "success": {"type": "boolean"},
-                    "data": {
-                        "type": "object",
-                        "properties": {
-                             "screenshot_data_length": {"type": "integer"}, # Indicate data presence
-                             "path": {"type": ["string", "null"]}
-                        }
-                    },
-                    "error": {"type": ["string", "null"]}
-                }
-            },
-            func=self.screenshot,
-            is_async=True
-        )
-        # Add get_dom_snapshot 
-        self.tools["get_dom_snapshot"] = ToolConfig(
-            name="get_dom_snapshot",
-            description="Get a snapshot of the current DOM structure",
-            input_schema={"type": "object", "properties": {}}, # No input args
-            output_schema={
-                "type": "object",
-                "properties": {
-                    "success": {"type": "boolean"},
-                    "data": {
-                        "type": "object",
-                        "properties": {
-                            "dom_snapshot": {"type": "string"}
-                        }
-                    },
-                    "error": {"type": ["string", "null"]}
-                }
-            },
-            func=self.get_dom_snapshot,
-            is_async=True
-        )
-
+        # The configurations are already defined in self.tools in __init__
+        # Simply return the existing dictionary.
         return self.tools
         
     async def navigate(self, url: str) -> ToolResult:
@@ -234,132 +198,136 @@ class BrowserTools(Tool):
         Returns:
             ToolResult indicating success or failure
         """
+        logger.info(f"Attempting navigation to: {url}")
         try:
             await self.browser.navigate(url)
-            return ToolResult(
-                success=True,
-                data={"url": url, "status": "success", "message": f"Navigated to {url}"},
-                error=""
-            )
+            final_url = await self.browser.get_current_url()
+            return ToolResult(success=True, data={"status": "success", "url": final_url})
         except Exception as e:
-            return ToolResult(
-                success=False,
-                data={"url": url, "status": "error", "message": str(e)},
-                error=str(e)
-            )
+            logger.error(f"Navigation failed: {e}", exc_info=True)
+            return ToolResult(success=False, error=str(e), data={"status": "error", "url": url})
             
     async def click(self, selector: str) -> ToolResult:
         """Click an element.
         
         Args:
-            selector: CSS selector for the element
+            selector: CSS selector for element
             
         Returns:
             ToolResult indicating success or failure
         """
+        logger.info(f"Attempting click on selector: {selector}")
         try:
             await self.browser.click(selector)
-            return ToolResult(success=True, data={"selector": selector})
+            return ToolResult(success=True, data={"status": "success", "selector": selector})
         except Exception as e:
-            return ToolResult(success=False, data=None, error=str(e))
+            logger.error(f"Click failed: {e}", exc_info=True)
+            return ToolResult(success=False, error=str(e), data={"status": "error", "selector": selector})
             
-    async def type(self, selector: str, text: str) -> ToolResult:
+    async def type(self, selector: str, text: str, submit: bool = False) -> ToolResult:
         """Type text into an element.
         
         Args:
-            selector: CSS selector for the element
+            selector: CSS selector for element
             text: Text to type
+            submit: Whether to press Enter after typing
             
         Returns:
             ToolResult indicating success or failure
         """
+        logger.info(f"Attempting to type '{text}' into selector: {selector} (submit: {submit})")
         try:
-            await self.browser.type(selector, text)
-            return ToolResult(success=True, data={"selector": selector, "text": text})
+            result_dict = await self.browser.type(selector, text, submit)
+            if result_dict.get("success"):
+                return ToolResult(success=True, data={
+                    "status": "success", 
+                    "selector": selector, 
+                    "text_typed": text, 
+                    "submitted": submit
+                })
+            else:
+                error = result_dict.get("error", "Typing failed for unknown reason.")
+                logger.error(f"Type failed internally: {error}")
+                return ToolResult(success=False, error=error, data={
+                    "status": "error", 
+                    "selector": selector, 
+                    "error": error
+                })
         except Exception as e:
-            return ToolResult(success=False, data=None, error=str(e))
+            logger.error(f"Type action failed: {e}", exc_info=True)
+            return ToolResult(success=False, error=str(e), data={
+                "status": "error", 
+                "selector": selector, 
+                "error": str(e)
+            })
             
-    async def wait(self, selector: str, timeout: Optional[float] = None) -> ToolResult:
+    async def wait(self, selector: str, timeout: float = 10.0) -> ToolResult:
         """Wait for an element to appear.
-        
+
         Args:
-            selector: CSS selector for the element
-            timeout: Maximum time to wait in seconds
-            
+            selector: CSS selector for the element.
+            timeout: Maximum time to wait in seconds.
+
         Returns:
-            ToolResult indicating success or failure
+            ToolResult indicating success or failure.
         """
+        logger.info(f"Waiting for selector: {selector} (timeout: {timeout}s)")
         try:
-            await self.browser.wait(selector, timeout=timeout or 10.0)
-            return ToolResult(success=True, data={"selector": selector})
+            await self.browser.wait(selector, timeout)
+            return ToolResult(success=True, data={"status": "success", "selector": selector})
         except Exception as e:
-            return ToolResult(success=False, data=None, error=str(e))
-            
+            logger.error(f"Wait failed: {e}", exc_info=True)
+            return ToolResult(success=False, error=str(e), data={"status": "error", "selector": selector})
+
     async def screenshot(self, path: Optional[str] = None) -> ToolResult:
-        """Take a screenshot.
-        
+        """Take a screenshot of the current page.
+
         Args:
-            path: Optional path to save the screenshot
-            
+            path: Optional path to save the screenshot. If None, returns binary data.
+
         Returns:
-            ToolResult containing the screenshot data
+            ToolResult containing screenshot bytes (if path is None) or path (if path is provided).
         """
+        logger.info(f"Attempting screenshot (path: {path})")
         try:
-            screenshot = await self.browser.screenshot(path=path)
-            return ToolResult(success=True, data={"screenshot": screenshot, "path": path})
+            screenshot_bytes = await self.browser.screenshot(path=path)
+            data = {"status": "success", "path": path}
+            if path is None:
+                data["screenshot_bytes"] = base64.b64encode(screenshot_bytes).decode() if screenshot_bytes else None
+            return ToolResult(success=True, data=data)
         except Exception as e:
-            return ToolResult(success=False, data=None, error=str(e))
-            
+            logger.error(f"Screenshot failed: {e}", exc_info=True)
+            return ToolResult(success=False, error=str(e), data={"status": "error", "path": path})
+
     async def get_text(self, selector: str) -> ToolResult:
-        """Get text from an element.
-        
+        """Extract text content from an element.
+
         Args:
-            selector: CSS selector for the element
-            
+            selector: CSS selector for the element.
+
         Returns:
-            ToolResult containing the text
+            ToolResult containing the extracted text on success.
         """
+        logger.info(f"Attempting to get text from selector: {selector}")
         try:
             text = await self.browser.get_text(selector)
-            return ToolResult(success=True, data={"text": text, "selector": selector})
+            return ToolResult(success=True, data={"status": "success", "selector": selector, "text": text})
         except Exception as e:
-            return ToolResult(success=False, data=None, error=str(e))
-            
+            logger.error(f"Get text failed: {e}", exc_info=True)
+            return ToolResult(success=False, error=str(e), data={"status": "error", "selector": selector})
+
     async def get_dom_snapshot(self) -> ToolResult:
-        """Get a snapshot of the current DOM structure.
-        
-        Returns:
-            ToolResult containing the DOM snapshot string
-        """
-        if not self.browser or not self.browser._page:
-            return ToolResult(success=False, data=None, error="Browser or page not available")
-            
+        """Get a snapshot of the current DOM structure."""
+        logger.info("Attempting to get DOM snapshot")
         try:
-            # Get simplified DOM structure
-            dom = await self.browser._page.evaluate("""() => {
-                function simplifyNode(node) {
-                    if (node.nodeType === 3) return node.textContent.trim();
-                    if (node.nodeType !== 1) return '';
-                    
-                    const children = Array.from(node.childNodes)
-                        .map(simplifyNode)
-                        .filter(Boolean);
-                        
-                    const attrs = {};
-                    for (const attr of node.attributes || []) {
-                        if (['id', 'class', 'href', 'src', 'alt', 'title'].includes(attr.name)) {
-                            attrs[attr.name] = attr.value;
-                        }
-                    }
-                    
-                    return {
-                        tag: node.tagName.toLowerCase(),
-                        attrs,
-                        children: children.length ? children : undefined
-                    };
-                }
-                return JSON.stringify(simplifyNode(document.documentElement), null, 2);
-            }""")
-            return ToolResult(success=True, data={"dom_snapshot": dom}, error=None)
+            # Use get_html_source() instead of get_content()
+            dom_snapshot = await self.browser.get_html_source()
+            if dom_snapshot is not None:
+                 return ToolResult(success=True, data={"status": "success", "dom_snapshot": dom_snapshot})
+            else:
+                 # Handle case where get_html_source might return None or empty string on failure
+                 logger.error("get_html_source returned None or empty string")
+                 return ToolResult(success=False, error="Failed to retrieve HTML source", data={"status": "error"})
         except Exception as e:
-            return ToolResult(success=False, data=None, error=f"Error getting DOM snapshot: {e}") 
+            logger.error(f"Error getting DOM snapshot: {e}", exc_info=True)
+            return ToolResult(success=False, error=str(e), data={"status": "error"}) 

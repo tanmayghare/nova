@@ -37,7 +37,16 @@ class Browser:
         logger.debug(f"Browser.__init__ self.config set to type: {type(self.config)}")
         logger.debug(f"Browser.__init__ self.config dict: {self.config.model_dump()}")
         logger.debug(f"Browser.__init__ self.config has action_timeout: {hasattr(self.config, 'action_timeout')}")
-        
+
+        # Ensure viewport dimensions are integers *before* they are used
+        try:
+            self.config.viewport_width = int(self.config.viewport_width)
+            self.config.viewport_height = int(self.config.viewport_height)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Could not convert viewport dimensions to integers: {e}. Using defaults (1280x720).")
+            self.config.viewport_width = 1280
+            self.config.viewport_height = 720
+            
         self._browser: Optional[PlaywrightBrowser] = None
         self._page: Optional[Page] = None
         self._last_used: Optional[datetime] = None

@@ -1,4 +1,5 @@
-from .browser import Browser
+"""Nova browser configuration module."""
+
 from .config import BrowserConfig
 
-__all__ = ["Browser", "BrowserConfig"]
+__all__ = ["BrowserConfig"]
