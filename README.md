@@ -25,9 +25,13 @@ This is the root directory of the Nova project. For detailed documentation, plea
     *Key variables to check:* `LLM_PROVIDER`, `MODEL_NAME`, `NVIDIA_API_KEY` (if using NIM), `BROWSER_HEADLESS`, etc.
 
 3.  **Run the Example:**
-    Execute the example script:
+    Execute the example script (it uses a default task if none is provided):
     ```bash
     python run_nova.py
+    ```
+    Or provide your own task:
+    ```bash
+    python run_nova.py "Go to duckduckgo.com and search for 'large language models'"
     ```
 
 For more detailed setup and development information, see the [Development Guide](docs/user-guides/development.md). 
