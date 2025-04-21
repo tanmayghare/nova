@@ -73,4 +73,5 @@ logs/
 db/
 
 #Data
-data/
+data/# Database Files
+db/
