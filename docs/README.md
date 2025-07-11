@@ -16,7 +16,7 @@ An intelligent browser automation agent built with Python, powered by LangChain 
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/nova.git
+git clone https://github.com/tanmayghare/nova.git
 cd nova
 ```
 

@@ -5,8 +5,8 @@
 
 # -- Project information -----------------------------------------------------
 project = "Nova"
-copyright = "2024, Your Name"
-author = "Your Name"
+copyright = "2024, Nova Project Contributors"
+author = "Nova Project Contributors"
 release = "0.1.0"
 
 # -- General configuration ---------------------------------------------------
