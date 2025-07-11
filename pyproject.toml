@@ -1,7 +1,7 @@
 [project]
 name = "nova"
 version = "0.1.0"
-description = "An experimental intelligent browser automation agent powered by LLMs"
+description = "An educational/experimental intelligent browser automation agent powered by LLMs"
 authors = [
     { name = "Nova Project Contributors" }
 ]
@@ -15,11 +15,11 @@ dependencies = [
 requires-python = ">=3.9"
 readme = "README.md"
 license = { text = "MIT" }
-keywords = ["ai", "automation", "browser", "llm", "agent", "experimental"]
+keywords = ["ai", "automation", "browser", "llm", "agent", "educational", "experimental"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -27,16 +27,15 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Education",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Internet :: WWW/HTTP :: Browsers",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/nova"
-Repository = "https://github.com/yourusername/nova"
-Issues = "https://github.com/yourusername/nova/issues"
-Discussions = "https://github.com/yourusername/nova/discussions"
+Homepage = "https://github.com/tanmayghare/nova"
+Repository = "https://github.com/tanmayghare/nova"
 
 [project.optional-dependencies]
 dev = [

@@ -3,21 +3,23 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
-🚨 **This is a research and experimental project** 🚨
+🎓 **Educational and Experimental Project** 🧪
 
-Nova is an experimental intelligent browser automation agent built with Python, powered by LangChain and LangGraph. This project is actively being developed and is intended for research, experimentation, and educational purposes.
+Nova is an intelligent browser automation agent built with Python, powered by LangChain and LangGraph. This project is provided as-is for educational and experimental purposes.
 
 ## ⚠️ Important Notice
 
-This project is in early development and should be considered experimental. Features may change, break, or be removed without notice. Use at your own risk and not recommended for production environments.
+This project is **not under active development** and is provided for educational and experimental use only. Features may not work as expected, and no support or updates will be provided. 
+
+**If you're interested in developing this further, please fork the repository and create your own version.**
 
 ## 🧪 What is Nova?
 
-Nova is an AI-powered browser automation agent that can:
+Nova is an AI-powered browser automation agent that demonstrates how to:
 - Navigate websites and perform complex multi-step tasks
 - Make intelligent decisions using Large Language Models (LLMs)
 - Interact with web pages through natural language instructions
-- Learn from interactions and improve over time
+- Implement memory systems for learning from interactions
 - Handle dynamic web content and adapt to changes
 
 ## 🚀 Features
@@ -25,7 +27,7 @@ Nova is an AI-powered browser automation agent that can:
 - **AI-Powered Decision Making**: Uses LLMs to understand and execute complex web tasks
 - **Multi-Provider LLM Support**: Compatible with OpenAI, Anthropic, NVIDIA, and other providers
 - **Intelligent Web Automation**: Goes beyond simple scripting with context-aware actions
-- **Memory System**: Learns from previous interactions to improve performance
+- **Memory System**: Demonstrates learning from previous interactions
 - **Flexible Architecture**: Modular design for easy customization and extension
 - **Comprehensive Logging**: Detailed monitoring and debugging capabilities
 
@@ -39,7 +41,7 @@ Nova is an AI-powered browser automation agent that can:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/nova.git
+   git clone https://github.com/tanmayghare/nova.git
    cd nova
    ```
 
@@ -85,14 +87,15 @@ For detailed documentation, examples, and guides, see:
 - [Architecture](docs/architecture/) - System design and architecture
 - [Examples](examples/) - Code examples and use cases
 
-## 🤝 Research & Experimentation
+## 🍴 Fork and Develop
 
-This project welcomes researchers, developers, and enthusiasts interested in:
-- AI-powered web automation
-- Human-computer interaction
-- Language model applications
-- Browser automation techniques
-- Agent-based systems
+This project is provided as-is for educational purposes. If you want to:
+- Add new features
+- Fix bugs
+- Improve functionality
+- Adapt it for your needs
+
+**Please fork this repository and create your own version.** The codebase provides a solid foundation for building your own AI-powered browser automation tools.
 
 ## 📄 License
 
@@ -100,9 +103,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## ⚠️ Disclaimer
 
-This is experimental software. The authors are not responsible for any consequences of using this software. Always review and understand the code before running it, especially when interacting with external services or websites.
+This is experimental educational software provided as-is. The authors are not responsible for any consequences of using this software. Always review and understand the code before running it, especially when interacting with external services or websites.
 
-## 🔗 Links
-
-- [Issues](https://github.com/yourusername/nova/issues) - Report bugs or request features
-- [Discussions](https://github.com/yourusername/nova/discussions) - Community discussions and questions 
+**No support, updates, or maintenance will be provided for this project.** 

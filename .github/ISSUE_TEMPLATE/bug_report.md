@@ -31,5 +31,5 @@ If applicable, add screenshots to help explain your problem.
 **Additional context**
 Add any other context about the problem here.
 
-**⚠️ Experimental Software Notice**
-Please note that Nova is experimental software. If this is a stability issue, please also mention if you're using this in a production environment (not recommended).
+**⚠️ Educational/Experimental Software Notice**
+Please note that Nova is educational/experimental software that is not under active development. Bugs may not be fixed. Consider forking the repository to fix issues yourself.

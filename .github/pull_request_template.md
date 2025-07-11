@@ -12,7 +12,7 @@ Please delete options that are not relevant.
 - [ ] New feature (non-breaking change which adds functionality)
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] This change requires a documentation update
-- [ ] Research/Experimental improvement
+- [ ] Educational/Experimental improvement
 
 ## How Has This Been Tested?
 
@@ -31,7 +31,8 @@ Please describe the tests that you ran to verify your changes. Provide instructi
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] New and existing unit tests pass locally with my changes
 
-## Experimental Software Notice
+## Educational/Experimental Software Notice
 
-- [ ] I understand this is experimental software and my changes align with research/experimental goals
-- [ ] I have considered the implications of my changes on the overall system stability
+- [ ] I understand this is educational/experimental software not under active development
+- [ ] I have considered forking this repository instead of contributing to the main project
+- [ ] I understand that this PR may not be reviewed or merged promptly

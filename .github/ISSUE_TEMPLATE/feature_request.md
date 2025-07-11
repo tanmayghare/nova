@@ -18,11 +18,13 @@ A clear and concise description of any alternative solutions or features you've 
 **Additional context**
 Add any other context or screenshots about the feature request here.
 
-**Research/Experimental Context**
-Since this is a research project, please describe:
-- How this feature would benefit research or experimentation
-- Any relevant academic papers or projects that inspired this request
-- Whether you're interested in contributing to the implementation
+**Educational/Experimental Context**
+Since this is an educational project, please describe:
+- How this feature would benefit learning or experimentation
+- Any relevant resources or projects that inspired this request
+- Whether you're interested in forking and implementing this yourself
 
 **Implementation considerations**
 If you have ideas about how this could be implemented, please share them here.
+
+**Note**: This project is not under active development. Consider forking the repository to implement features yourself.

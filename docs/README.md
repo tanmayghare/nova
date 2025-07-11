@@ -1,6 +1,8 @@
 # Nova
 
-An intelligent browser automation agent built with Python, powered by LangChain and LangGraph.
+An intelligent browser automation agent built with Python, powered by LangChain and LangGraph. This project is provided as-is for educational and experimental purposes.
+
+> **⚠️ Notice**: This project is not under active development. If you want to extend or improve the functionality, please fork the repository and create your own version.
 
 ## Features
 
